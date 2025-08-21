@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WAVLAB SOLARIA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+    <!-- Post-processing scripts for bloom effect -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/"
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; background-color: #000; cursor: grab; }
+        body:active { cursor: grabbing; }
+        canvas { display: block; }
+        #controls {
+            position: absolute; top: 10px; left: 10px; right: 10px;
+            background-color: rgba(17, 24, 39, 0.85);
+            backdrop-filter: blur(12px); border-radius: 12px; color: white;
+            max-height: calc(100vh - 20px); box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1); display: flex; flex-direction: column;
+            width: auto;
+        }
+        @media (min-width: 640px) {
+            #controls {
+                width: 380px;
+                right: auto;
+            }
+        }
+        #controls-content { overflow-y: auto; transition: all 0.3s ease-out; max-height: 1000px; opacity: 1; }
+        #controls-content.hidden { max-height: 0; opacity: 0; padding-top: 0 !important; padding-bottom: 0 !important; }
+        #controls-content::-webkit-scrollbar { width: 8px; }
+        #controls-content::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+        #controls-content::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.3); border-radius: 10px; }
+        #audio-start-button {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 12px 24px;
+            font-size: 1.2rem; font-weight: bold; color: white; background: linear-gradient(45deg, #3f5efb, #fc466b);
+            border: none; border-radius: 50px; cursor: pointer; box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+            transition: all 0.3s ease-in-out; z-index: 100;
+        }
+        #audio-start-button.hidden { opacity: 0; pointer-events: none; }
+        .custom-select { background-color: #1f2937; border: 1px solid #4b5563; color: white; border-radius: 4px; padding: 4px 8px; width: 100%; appearance: none; }
+        #sequencer-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+        .grid-step { width: 100%; aspect-ratio: 1 / 1; background-color: #374151; border-radius: 4px; cursor: pointer; transition: background-color 0.2s, opacity 0.2s; }
+        .grid-step.active { background-color: #10b981; box-shadow: 0 0 8px #10b981; }
+        .grid-step:hover { background-color: #4b5563; }
+        .planet-selector-btn { background-color: #374151; border: 1px solid #4b5563; padding: 4px 8px; border-radius: 4px; transition: all 0.2s; font-size: 0.75rem; }
+        .planet-selector-btn.active { background-color: #10b981; color: white; border-color: #10b981; }
+        .toggle-switch { width: 40px; height: 20px; background-color: #374151; border-radius: 10px; padding: 2px; cursor: pointer; }
+        .toggle-switch-inner { width: 16px; height: 16px; background-color: white; border-radius: 50%; transition: transform 0.2s; }
+        .toggle-switch.active { background-color: #10b981; }
+        .toggle-switch.active .toggle-switch-inner { transform: translateX(20px); }
+    </style>
+</head>
+<body>
+    <button id="audio-start-button">Start Audio</button>
+    <div id="controls">
+        <div id="controls-header" class="flex justify-between items-center p-4 bg-gray-900/50 rounded-t-lg cursor-pointer select-none">
+            <h2 class="text-xl font-bold text-white">Controls</h2>
+            <button id="toggle-controls" class="text-white text-2xl font-mono focus-outline-none">+</button>
+        </div>
+        <div id="controls-content" class="p-4 space-y-4 hidden">
+            <!-- Master & FX -->
+            <div class="p-2 rounded-md bg-black/30 space-y-3">
+                <h3 class="text-lg font-semibold">Master</h3>
+                <div class="text-center text-cyan-400 font-mono text-lg" id="time-display">0.00 Earth Years</div>
+                <div><label class="text-sm flex justify-between"><span>Speed</span><span id="bpm-value">120 BPM</span></label><input type="range" id="speed" min="0.1" max="20" value="1" step="0.1" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" title="Adjust the overall speed of the simulation and music."></div>
+                <div class="flex space-x-2"><select id="root-note" class="custom-select w-1/2" title="Set the root note of the musical scale."></select><select id="scale-type" class="custom-select w-1/2" title="Choose the musical scale (e.g., major, minor)."></select></div>
+                <div><label class="text-sm flex justify-between"><span>Voicing Spread</span><span id="voicing-value">0%</span></label><input type="range" id="voicing-spread" min="0" max="1" value="0" step="0.01" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" title="Spread notes across different octaves. Low values are clustered, high values are spread out."></div>
+                <div class="mt-2 space-y-2 border-t border-gray-700 pt-2">
+                    <h3 class="text-lg font-semibold">Generators</h3>
+                    <label class="text-sm flex justify-between"><span>Sequence Density</span><span id="density-value">50%</span></label>
+                    <input type="range" id="density-slider" min="0" max="1" value="0.5" step="0.01" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" title="Set the probability of a step being active when randomizing.">
+                    <div class="flex space-x-2">
+                        <button id="randomize-seq-button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-2 rounded transition-colors text-sm" title="Generate a new random sequence for all planets based on the density.">Randomize All Sequences</button>
+                        <button id="randomize-osc-button" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-2 rounded transition-colors text-sm" title="Assign a new random instrument and chord mode to every planet.">Randomize All Instruments</button>
+                    </div>
+                </div>
+                <h3 class="text-lg font-semibold mt-2">Ambient FX</h3>
+                <div><label class="text-sm">Wet / Dry</label><input type="range" id="fx-wet" min="0" max="1" value="0.5" step="0.01" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" title="Mix between the dry (unprocessed) and wet (processed with effects) signal."></div>
+                 <div class="grid grid-cols-2 gap-x-4 gap-y-2">
+                    <div><label class="text-xs">Reverb</label><input type="range" id="reverb-decay" min="0.1" max="10" value="4" step="0.1" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" title="The length of the reverb tail."></div>
+                    <div><label class="text-xs">Delay</label><input type="range" id="delay-feedback" min="0" max="0.9" value="0.25" step="0.01" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" title="The number of delay repetitions."></div>
+                    <div><label class="text-xs">Chorus</label><input type="range" id="chorus-depth" min="0" max="1" value="0.1" step="0.01" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" title="The intensity of the chorus effect."></div>
+                    <div><label class="text-xs">Drive</label><input type="range" id="distortion-amount" min="0" max="1" value="0" step="0.01" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" title="The amount of distortion."></div>
+                    <div><label class="text-xs">Phaser Freq</label><input type="range" id="phaser-freq" min="0.1" max="20" value="0.5" step="0.1" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" title="The speed of the phaser sweep."></div>
+                    <div><label class="text-xs">Phaser Octaves</label><input type="range" id="phaser-octaves" min="1" max="8" value="3" step="0.1" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" title="The depth of the phaser sweep."></div>
+                </div>
+            </div>
+            <!-- Planet Editor -->
+            <div class="p-2 rounded-md bg-black/30 space-y-2">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-lg font-semibold">Planet Editor</h3>
+                    <div class="flex space-x-1">
+                        <button id="focus-button" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded transition-colors text-xs" title="Focus camera on selected planet.">Focus</button>
+                        <button id="home-button" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-3 rounded transition-colors text-xs" title="Return to default camera view.">Home</button>
+                    </div>
+                </div>
+                <div id="planet-selector-container" class="grid grid-cols-4 gap-1"></div>
+                <div id="sequencer-grid" class="mt-2" title="Click to activate a step. Click and drag vertically on an active step to change its velocity."></div>
+                <div id="synth-controls-container" class="mt-2 space-y-2 border-t border-gray-700 pt-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        // --- Basic Setup ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 5000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- Post-processing (Bloom) ---
+        const renderScene = new RenderPass(scene, camera);
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+        bloomPass.threshold = 0; bloomPass.strength = 1.2; bloomPass.radius = 0.5;
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+
+        // --- Subtle Starfield ---
+        const starCount = 1500;
+        const starVertices = [];
+        for (let i = 0; i < starCount; i++) starVertices.push(THREE.MathUtils.randFloatSpread(3000), THREE.MathUtils.randFloatSpread(3000), THREE.MathUtils.randFloatSpread(3000));
+        const starGeometry = new THREE.BufferGeometry();
+        starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+        const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.3, transparent: true });
+        const stars = new THREE.Points(starGeometry, starMaterial);
+        scene.add(stars);
+
+        // --- Sun ---
+        const sun = new THREE.Mesh(new THREE.SphereGeometry(10, 32, 32), new THREE.MeshBasicMaterial({ color: 0xfdb813 }));
+        scene.add(sun);
+        const sunLight = new THREE.PointLight(0xffffff, 2, 4000);
+        sun.add(sunLight);
+        
+        // --- Shockwave Pool ---
+        const shockwavePool = [];
+        for (let i = 0; i < 10; i++) {
+            const shockwave = new THREE.Mesh( new THREE.RingGeometry(1, 1.2, 64), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide }) );
+            shockwave.rotation.x = -Math.PI / 2;
+            shockwave.visible = false;
+            scene.add(shockwave);
+            shockwavePool.push(shockwave);
+        }
+
+        // --- Music Theory Engine ---
+        let fullScaleNotes = [];
+        const music = {
+            notes: ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"],
+            scales: { major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10], pentatonic: [0, 2, 4, 7, 9] },
+            scaleColors: [ new THREE.Color(0xffffff), new THREE.Color(0x87CEEB), new THREE.Color(0xFFFF8F), new THREE.Color(0x87CEEB), new THREE.Color(0x00FFFF), new THREE.Color(0x87CEEB), new THREE.Color(0x87CEEB) ],
+            getScaleDegree: (noteName, root, scaleIntervals) => {
+                const rootIndex = music.notes.indexOf(root);
+                const noteIndex = music.notes.indexOf(noteName.slice(0, -1));
+                const interval = (noteIndex - rootIndex + 12) % 12;
+                return scaleIntervals.indexOf(interval);
+            },
+            generateScale: (root, type, spread) => {
+                const rootIndex = music.notes.indexOf(root);
+                const scaleIntervals = music.scales[type];
+                const baseOctaves = [3, 4, 4, 4, 2, 2, 1, 1];
+                const spreadOctaves = [1, 2, 3, 4, 5, 5, 6, 6].reverse();
+                return Array.from({ length: 8 }, (_, i) => {
+                    const degree = i % scaleIntervals.length;
+                    const noteIndex = (rootIndex + scaleIntervals[degree]) % 12;
+                    const octave = Math.round(baseOctaves[i] * (1 - spread) + spreadOctaves[i] * spread);
+                    return music.notes[noteIndex] + octave;
+                });
+            },
+            generateDiatonicChord: (note, scaleNotes) => {
+                const rootIndex = scaleNotes.indexOf(note);
+                if (rootIndex === -1) return [note];
+                const third = scaleNotes[rootIndex + 2];
+                const fifth = scaleNotes[rootIndex + 4];
+                if (!third || !fifth) return [note];
+                return [note, third, fifth];
+            }
+        };
+
+        // --- Planets Data ---
+        const planetsData = [
+            { name: 'mercury', color: 0xaaaaaa, size: 0.38, distance: 30, speed: 1.6 },
+            { name: 'venus', color: 0xffd700, size: 0.95, distance: 45, speed: 1.2 },
+            { name: 'earth', color: 0x0077be, size: 1, distance: 65, speed: 1 },
+            { name: 'mars', color: 0xff5733, size: 0.53, distance: 85, speed: 0.8 },
+            { name: 'jupiter', color: 0xc2b280, size: 4, distance: 130, speed: 0.4 },
+            { name: 'saturn', color: 0xf0e68c, size: 3.5, distance: 180, speed: 0.3 },
+            { name: 'uranus', color: 0xace5ee, size: 2, distance: 230, speed: 0.2 },
+            { name: 'neptune', color: 0x3f5efb, size: 1.9, distance: 280, speed: 0.15 },
+        ];
+        const planets = [];
+        const STEPS_PER_ORBIT = 32;
+        const INACTIVE_STEP_COLOR = 0x333344;
+        const OSC_TYPES = ['fm', 'am', 'mono', 'pluck', 'membrane', 'rhodes', 'pulsar', 'aurora'];
+
+        // --- Audio Setup (Tone.js) ---
+        const masterVolume = new Tone.Volume(-6);
+        const dryWet = new Tone.CrossFade(0.5).toDestination();
+        masterVolume.connect(dryWet.a);
+
+        const chorus = new Tone.Chorus(4, 2.5, 0.5);
+        const phaser = new Tone.Phaser({ frequency: 0.5, octaves: 3, baseFrequency: 350 });
+        const distortion = new Tone.Distortion(0);
+        const delay = new Tone.PingPongDelay("8n", 0.25);
+        const reverb = new Tone.Reverb({ decay: 4, predelay: 0.01 });
+
+        masterVolume.chain(chorus, phaser, distortion, delay, reverb, dryWet.b);
+        
+        function createSynth(type) {
+             const envelope = { attack: 0.01, decay: 0.1, sustain: 0.5, release: 1 };
+             switch(type) {
+                case 'pluck': return new Tone.PluckSynth({ attackNoise: 0.5, dampening: 4000, resonance: 0.9 });
+                case 'fm': return new Tone.FMSynth({ envelope });
+                case 'am': return new Tone.AMSynth({ envelope });
+                case 'membrane': return new Tone.MembraneSynth({ pitchDecay: 0.05, octaves: 10, oscillator: { type: "sine" }, envelope: { attack: 0.001, decay: 0.4, sustain: 0.01, release: 1.4, attackCurve: 'exponential' } });
+                case 'rhodes': return new Tone.FMSynth({
+                    harmonicity: 3, modulationIndex: 10,
+                    envelope: { attack: 0.01, decay: 0.2, sustain: 0.3, release: 1 },
+                    oscillator: { type: "sine" }, modulation: { type: "square" },
+                    modulationEnvelope: { attack: 0.02, decay: 0.2, sustain: 0.1, release: 0.5 }
+                });
+                case 'pulsar': return new Tone.Synth({ oscillator: { type: 'pulse', width: 0.6 }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.2, release: 0.9 } });
+                case 'aurora': return new Tone.AMSynth({ harmonicity: 1.5, envelope: { attack: 0.5, decay: 1, sustain: 0.5, release: 1.5 }, modulationEnvelope: { attack: 1, decay: 0.5, sustain: 1, release: 2 } });
+                case 'mono': return new Tone.MonoSynth({ envelope });
+                default: return new Tone.Synth({ envelope });
+            }
+        }
+
+        planetsData.forEach((pData) => {
+            const planet = new THREE.Mesh( new THREE.SphereGeometry(pData.size, 32, 32), new THREE.MeshStandardMaterial({ color: pData.color, emissive: pData.color, emissiveIntensity: 0 }));
+            scene.add(planet);
+
+            const orbitPath = new THREE.EllipseCurve(0, 0, pData.distance, pData.distance, 0, 2 * Math.PI, false, 0);
+            const orbitPoints = orbitPath.getPoints(128);
+            const orbitGeometry = new THREE.BufferGeometry().setFromPoints(orbitPoints);
+            const orbitMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.2 });
+            const orbit = new THREE.Line(orbitGeometry, orbitMaterial);
+            orbit.rotation.x = Math.PI / 2;
+            scene.add(orbit);
+
+            const steps = [];
+            for (let i = 0; i < STEPS_PER_ORBIT; i++) {
+                const step = new THREE.Mesh( new THREE.SphereGeometry(1.8, 8, 8), new THREE.MeshBasicMaterial({ color: INACTIVE_STEP_COLOR }));
+                const angle = (i / STEPS_PER_ORBIT) * Math.PI * 2;
+                step.position.set(Math.cos(angle) * pData.distance, 0, Math.sin(angle) * pData.distance);
+                step.userData = { active: false, planet: pData.name, index: i, velocity: 0.7, baseColor: new THREE.Color(INACTIVE_STEP_COLOR) };
+                scene.add(step);
+                steps.push(step);
+            }
+
+            const synth = createSynth('fm').connect(masterVolume);
+            synth.volume.value = -12;
+            planets.push({ mesh: planet, ...pData, synth, steps, lastStep: -1, synthType: 'fm', pluckSustain: 0.0, chordMode: false });
+        });
+        
+        const saturnData = planets.find(p => p.name === 'saturn');
+        if (saturnData) { const ring = new THREE.Mesh(new THREE.RingGeometry(saturnData.size + 1, saturnData.size + 4, 64), new THREE.MeshBasicMaterial({ color: 0xaaa_aaa, side: THREE.DoubleSide, transparent: true, opacity: 0.6 })); ring.rotation.x = Math.PI * 0.4; saturnData.mesh.add(ring); }
+
+        // --- Camera & Mouse/Touch Controls ---
+        const defaultCameraPosition = new THREE.Vector3(200, 200, 350);
+        camera.position.copy(defaultCameraPosition);
+        let isInteracting = false, previousPointerPosition = { x: 0, y: 0 }, cameraAngle = { x: -0.5, y: 0.5 };
+        let cameraTarget = new THREE.Vector3(0, 0, 0);
+        let activeFocus = null;
+        let initialPinchDistance = 0;
+
+        function getPinchDistance(touches) {
+            return Math.hypot(touches[0].pageX - touches[1].pageX, touches[0].pageY - touches[1].pageY);
+        }
+
+        function onPointerDown(e) {
+            isInteracting = true;
+            previousPointerPosition = { x: e.clientX || e.touches[0].clientX, y: e.clientY || e.touches[0].clientY };
+            if (e.touches && e.touches.length > 1) {
+                initialPinchDistance = getPinchDistance(e.touches);
+            }
+        }
+
+        function onPointerMove(e) {
+            if (!isInteracting || activeTween) return;
+            if (e.touches && e.touches.length > 1) { // Pinch-zoom
+                const newPinchDistance = getPinchDistance(e.touches);
+                const delta = initialPinchDistance - newPinchDistance;
+                camera.position.z += delta * 0.5;
+                camera.position.z = Math.max(50, Math.min(1500, camera.position.z));
+                initialPinchDistance = newPinchDistance;
+            } else { // Pan
+                const currentX = e.clientX || e.touches[0].clientX;
+                const currentY = e.clientY || e.touches[0].clientY;
+                const deltaX = currentX - previousPointerPosition.x;
+                const deltaY = currentY - previousPointerPosition.y;
+                cameraAngle.x -= deltaX * 0.005;
+                cameraAngle.y -= deltaY * 0.005;
+                cameraAngle.y = Math.max(-Math.PI / 2 + 0.1, Math.min(Math.PI / 2 - 0.1, cameraAngle.y));
+                previousPointerPosition = { x: currentX, y: currentY };
+            }
+        }
+
+        function onPointerUp() { isInteracting = false; }
+
+        renderer.domElement.addEventListener('mousedown', onPointerDown);
+        renderer.domElement.addEventListener('mousemove', onPointerMove);
+        renderer.domElement.addEventListener('mouseup', onPointerUp);
+        renderer.domElement.addEventListener('touchstart', onPointerDown);
+        renderer.domElement.addEventListener('touchmove', onPointerMove);
+        renderer.domElement.addEventListener('touchend', onPointerUp);
+        renderer.domElement.addEventListener('wheel', e => {
+            if (activeTween) return;
+            camera.position.z += e.deltaY * 0.2;
+            camera.position.z = Math.max(50, Math.min(1500, camera.position.z));
+        }, { passive: true });
+        
+        // --- Sound and Visuals ---
+        function triggerPlanetSound(planet, velocity) {
+            if (Tone.context.state !== 'running' || !planet.synth || planet.synth.disposed) return;
+            const note = planet.chordMode ? music.generateDiatonicChord(planet.note, fullScaleNotes) : planet.note;
+            try {
+                planet.synth.triggerAttackRelease(note, '8n', Tone.now(), velocity);
+            } catch (e) { console.error(`Error triggering sound for ${planet.name}:`, e); }
+            new TWEEN.Tween(planet.mesh.material).to({ emissiveIntensity: 1.5 }, 100).yoyo(true).repeat(1).easing(TWEEN.Easing.Cubic.InOut).start();
+            const shockwave = shockwavePool.find(s => !s.visible);
+            if (shockwave) {
+                shockwave.position.copy(planet.mesh.position);
+                shockwave.material.color.set(planet.color);
+                shockwave.scale.set(planet.size, planet.size, planet.size);
+                shockwave.visible = true;
+                shockwave.material.opacity = 1.0;
+                new TWEEN.Tween(shockwave.scale).to({ x: planet.size + 10, y: planet.size + 10, z: planet.size + 10 }, 500).easing(TWEEN.Easing.Quadratic.Out).start();
+                new TWEEN.Tween(shockwave.material).to({ opacity: 0 }, 500).easing(TWEEN.Easing.Quadratic.Out).onComplete(() => shockwave.visible = false).start();
+            }
+        }
+
+        function triggerStepGlow(step) {
+            if (!step || !step.userData.active) return;
+            const originalColor = step.userData.baseColor;
+            const glowColor = new THREE.Color(0xffffff);
+            let colorProxy = { r: originalColor.r, g: originalColor.g, b: originalColor.b };
+            new TWEEN.Tween(colorProxy).to({ r: glowColor.r, g: glowColor.g, b: glowColor.b }, 100).easing(TWEEN.Easing.Cubic.Out)
+                .onUpdate(() => step.material.color.setRGB(colorProxy.r, colorProxy.g, colorProxy.b)).yoyo(true).repeat(1).start();
+        }
+
+        function updateStepVisuals(step) {
+            step.material.color.set(step.userData.active ? step.userData.baseColor : INACTIVE_STEP_COLOR);
+            const gridStep = document.querySelector(`.grid-step[data-planet="${step.userData.planet}"][data-index="${step.userData.index}"]`);
+            if (gridStep) {
+                gridStep.classList.toggle('active', step.userData.active);
+                gridStep.style.opacity = step.userData.velocity;
+            }
+        }
+
+        // --- Animation Loop ---
+        const clock = new THREE.Clock();
+        const timeDisplay = document.getElementById('time-display');
+        let activeTween = null;
+
+        function animate(time) {
+            requestAnimationFrame(animate); TWEEN.update(time);
+            const elapsedTime = clock.getElapsedTime();
+            const speedMultiplier = parseFloat(document.getElementById('speed').value);
+
+            const SECONDS_PER_EARTH_YEAR_AT_SPEED_1 = (2 * Math.PI) / (1 * 0.1);
+            const elapsedEarthYears = (elapsedTime * speedMultiplier) / SECONDS_PER_EARTH_YEAR_AT_SPEED_1;
+            timeDisplay.textContent = `${elapsedEarthYears.toFixed(2)} Earth Years`;
+
+            stars.material.opacity = Math.sin(elapsedTime * 0.3) * 0.2 + 0.5;
+
+            planets.forEach(p => {
+                const angle = (elapsedTime * p.speed * 0.1 * speedMultiplier) % (2 * Math.PI);
+                p.mesh.position.set(Math.cos(angle) * p.distance, 0, Math.sin(angle) * p.distance);
+                const currentStepIndex = Math.floor((angle / (2 * Math.PI)) * STEPS_PER_ORBIT);
+                if (currentStepIndex !== p.lastStep) {
+                    const step = p.steps[currentStepIndex];
+                    if (step.userData.active) { triggerPlanetSound(p, step.userData.velocity); triggerStepGlow(step); }
+                    p.lastStep = currentStepIndex;
+                }
+            });
+            
+            if (activeFocus) {
+                cameraTarget.copy(activeFocus.position);
+            }
+
+            if (!activeTween) {
+                const dist = camera.position.distanceTo(cameraTarget);
+                camera.position.x = cameraTarget.x + dist * Math.sin(cameraAngle.x) * Math.cos(cameraAngle.y);
+                camera.position.y = cameraTarget.y + dist * Math.sin(cameraAngle.y);
+                camera.position.z = cameraTarget.z + dist * Math.cos(cameraAngle.x) * Math.cos(cameraAngle.y);
+                camera.lookAt(cameraTarget);
+            }
+            composer.render();
+        }
+
+        // --- UI and Event Listeners ---
+        const synthControlsContainer = document.getElementById('synth-controls-container');
+
+        function updatePlanetNotes() {
+            const rootNote = document.getElementById('root-note').value;
+            const scaleType = document.getElementById('scale-type').value;
+            const scaleIntervals = music.scales[scaleType];
+            const spread = parseFloat(document.getElementById('voicing-spread').value);
+            const newNotes = music.generateScale(rootNote, scaleType, spread);
+            
+            fullScaleNotes = [];
+            for (let octave = 0; octave < 9; octave++) {
+                scaleIntervals.forEach(interval => {
+                    const noteIndex = (music.notes.indexOf(rootNote) + interval) % 12;
+                    fullScaleNotes.push(music.notes[noteIndex] + octave);
+                });
+            }
+
+            planets.forEach((p, i) => { 
+                p.note = newNotes[i];
+                const degree = music.getScaleDegree(p.note, rootNote, scaleIntervals);
+                const color = music.scaleColors[degree] || new THREE.Color(0x87CEEB);
+                p.steps.forEach(step => {
+                    step.userData.baseColor.set(color);
+                    if (step.userData.active) {
+                        step.material.color.set(color);
+                    }
+                });
+            });
+        }
+
+        function updateEnvelope(planet, value) {
+            const pluck = { attack: 0.005, sustain: 0.01, release: 0.4 };
+            const sustain = { attack: 0.01, sustain: 0.9, release: 2.0 };
+            const lerp = (a, b, t) => a * (1 - t) + b * t;
+
+            if (planet.synth && (planet.synth.envelope || (planet.synth.voices && planet.synth.voices[0].envelope))) {
+                 planet.synth.set({ envelope: {
+                    attack: lerp(pluck.attack, sustain.attack, value),
+                    sustain: lerp(pluck.sustain, sustain.sustain, value),
+                    release: lerp(pluck.release, sustain.release, value)
+                }});
+            }
+        }
+        
+        function randomizeAllSequences(density) {
+             planets.forEach(planet => {
+                planet.steps.forEach(step => {
+                    step.userData.active = Math.random() < density;
+                    updateStepVisuals(step);
+                });
+            });
+        }
+        
+        function randomizeAllOscillators() {
+             planets.forEach(planet => {
+                const newType = OSC_TYPES[Math.floor(Math.random() * OSC_TYPES.length)];
+                const newChordMode = Math.random() < 0.3;
+                setPlanetSynth(planet, newType, newChordMode);
+            });
+            const selectedPlanetName = document.querySelector('.planet-selector-btn.active').dataset.planet;
+            displayPlanetEditor(selectedPlanetName);
+        }
+
+        function setPlanetSynth(planet, newType, isChord) {
+            const oldSynth = planet.synth;
+            const oldVolume = oldSynth ? oldSynth.volume.value : -12;
+
+            let newSynth;
+            if (isChord) {
+                let voiceSynth;
+                switch(newType) {
+                    case 'fm': case 'rhodes': case 'aurora': voiceSynth = Tone.FMSynth; break;
+                    case 'am': voiceSynth = Tone.AMSynth; break;
+                    default: voiceSynth = Tone.Synth; 
+                }
+                newSynth = new Tone.PolySynth({ voice: voiceSynth }).connect(masterVolume);
+            } else {
+                newSynth = createSynth(newType).connect(masterVolume);
+            }
+            newSynth.volume.value = oldVolume;
+
+            planet.synth = newSynth;
+            planet.synthType = newType;
+            planet.chordMode = isChord;
+            updateEnvelope(planet, planet.pluckSustain);
+
+            if (oldSynth && !oldSynth.disposed) {
+                if (typeof oldSynth.releaseAll === 'function') oldSynth.releaseAll(Tone.now());
+                oldSynth.disconnect();
+                Tone.Transport.scheduleOnce(() => { if (oldSynth && !oldSynth.disposed) oldSynth.dispose(); }, Tone.now() + 2.5);
+            }
+        }
+
+        function populateSynthControls(planetName) {
+            const planet = planets.find(p => p.name === planetName);
+            if (!planet) return;
+            
+            synthControlsContainer.innerHTML = `
+                <div class="flex items-center space-x-2">
+                    <select id="synth-type-select" class="custom-select flex-grow" title="Select the instrument sound for this planet.">
+                        ${OSC_TYPES.map(o => `<option value="${o}" ${planet.synthType === o ? 'selected' : ''}>${o.charAt(0).toUpperCase() + o.slice(1)}</option>`).join('')}
+                    </select>
+                    <label class="text-xs whitespace-nowrap">Chord</label>
+                    <div id="chord-toggle" class="toggle-switch ${planet.chordMode ? 'active' : ''}" title="Toggle between single notes and three-note chords."><div class="toggle-switch-inner"></div></div>
+                </div>
+                <div><label class="text-xs">Volume</label><input type="range" id="volume-slider" min="-40" max="0" value="${planet.synth.volume.value}" step="1" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" title="Adjust the volume for this planet's instrument."></div>
+                <div><label class="text-xs flex justify-between"><span>Pluck</span><span>Sustain</span></label><input type="range" id="pluck-sustain-slider" min="0" max="1" value="${planet.pluckSustain}" step="0.01" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer" title="Adjust the sound's envelope from short and plucky to long and sustained."></div>
+            `;
+        }
+
+        function displayPlanetEditor(planetName) {
+            document.querySelectorAll('.planet-selector-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.planet === planetName));
+            const gridContainer = document.getElementById('sequencer-grid');
+            gridContainer.innerHTML = '';
+            const planet = planets.find(p => p.name === planetName);
+            if (!planet) return;
+
+            let isDragging = false;
+            let dragStep = null;
+            let dragStartY = 0;
+            let startVelocity = 0;
+
+            planet.steps.forEach((step, i) => {
+                const stepDiv = document.createElement('div');
+                stepDiv.className = `grid-step ${step.userData.active ? 'active' : ''}`;
+                stepDiv.style.opacity = step.userData.velocity;
+                stepDiv.dataset.planet = planetName;
+                stepDiv.dataset.index = i;
+
+                stepDiv.addEventListener('mousedown', (e) => {
+                    isDragging = true;
+                    dragStep = step;
+                    dragStartY = e.clientY;
+                    startVelocity = step.userData.velocity;
+                    
+                    setTimeout(() => { if (!isDragging) { step.userData.active = !step.userData.active; updateStepVisuals(step); dragStep = null; } }, 200);
+                });
+
+                gridContainer.addEventListener('mousemove', (e) => {
+                    if (isDragging && dragStep) {
+                        const deltaY = e.clientY - dragStartY;
+                        const velocityChange = -deltaY / 50;
+                        const newVelocity = Math.max(0.1, Math.min(1, startVelocity + velocityChange));
+                        dragStep.userData.velocity = newVelocity;
+                        updateStepVisuals(dragStep);
+                    }
+                });
+                
+                gridContainer.addEventListener('mouseup', () => { isDragging = false; dragStep = null; });
+                gridContainer.addEventListener('mouseleave', () => { isDragging = false; dragStep = null; });
+
+                gridContainer.appendChild(stepDiv);
+            });
+            
+            populateSynthControls(planetName);
+        }
+        
+        function focusOnPlanet(planetName) {
+            const planet = planets.find(p => p.name === planetName);
+            if (!planet) return;
+            if (activeTween) activeTween.stop();
+            activeFocus = planet.mesh;
+
+            const offset = new THREE.Vector3().subVectors(camera.position, cameraTarget);
+            const finalPosition = planet.mesh.position.clone().add(offset);
+            
+            activeTween = new TWEEN.Tween(camera.position)
+                .to(finalPosition, 1200)
+                .easing(TWEEN.Easing.Quadratic.InOut)
+                .onComplete(() => { activeTween = null; })
+                .start();
+        }
+
+        function goHome() {
+            if (activeTween) activeTween.stop();
+            activeFocus = null;
+            
+            activeTween = new TWEEN.Tween(camera.position)
+                .to(defaultCameraPosition, 1200)
+                .easing(TWEEN.Easing.Quadratic.InOut)
+                .onUpdate(() => camera.lookAt(scene.position))
+                .onComplete(() => {
+                    cameraTarget.set(0,0,0);
+                    cameraAngle = { x: -0.5, y: 0.5 };
+                    activeTween = null;
+                })
+                .start();
+        }
+
+        function setupUI() {
+            const rootNoteSelect = document.getElementById('root-note');
+            music.notes.forEach(n => rootNoteSelect.innerHTML += `<option value="${n}">${n}</option>`);
+            const scaleTypeSelect = document.getElementById('scale-type');
+            Object.keys(music.scales).forEach(s => scaleTypeSelect.innerHTML += `<option value="${s}">${s.charAt(0).toUpperCase() + s.slice(1)}</option>`);
+            
+            const planetSelectorContainer = document.getElementById('planet-selector-container');
+            planets.forEach(p => {
+                const btn = document.createElement('button');
+                btn.className = 'planet-selector-btn';
+                btn.textContent = p.name.charAt(0).toUpperCase() + p.name.slice(1);
+                btn.dataset.planet = p.name;
+                btn.addEventListener('click', () => displayPlanetEditor(p.name));
+                planetSelectorContainer.appendChild(btn);
+            });
+
+            const voicingSpreadSlider = document.getElementById('voicing-spread');
+            voicingSpreadSlider.addEventListener('input', e => {
+                document.getElementById('voicing-value').textContent = `${Math.round(e.target.value * 100)}%`;
+                updatePlanetNotes();
+            });
+            
+            rootNoteSelect.addEventListener('change', updatePlanetNotes);
+            scaleTypeSelect.addEventListener('change', updatePlanetNotes);
+            
+            document.getElementById('fx-wet').addEventListener('input', e => dryWet.fade.value = parseFloat(e.target.value));
+            document.getElementById('reverb-decay').addEventListener('input', e => reverb.decay = parseFloat(e.target.value));
+            document.getElementById('delay-feedback').addEventListener('input', e => delay.feedback.value = parseFloat(e.target.value));
+            document.getElementById('chorus-depth').addEventListener('input', e => chorus.depth = parseFloat(e.target.value));
+            document.getElementById('distortion-amount').addEventListener('input', e => distortion.distortion = parseFloat(e.target.value));
+            document.getElementById('phaser-freq').addEventListener('input', e => phaser.frequency.value = parseFloat(e.target.value));
+            document.getElementById('phaser-octaves').addEventListener('input', e => phaser.octaves = parseFloat(e.target.value));
+
+            const densitySlider = document.getElementById('density-slider');
+            const densityValueLabel = document.getElementById('density-value');
+            document.getElementById('randomize-seq-button').addEventListener('click', () => {
+                const density = parseFloat(densitySlider.value);
+                randomizeAllSequences(density);
+            });
+            document.getElementById('randomize-osc-button').addEventListener('click', randomizeAllOscillators);
+            densitySlider.addEventListener('input', e => { densityValueLabel.textContent = `${Math.round(e.target.value * 100)}%`; });
+            
+            const speedSlider = document.getElementById('speed');
+            const bpmValueLabel = document.getElementById('bpm-value');
+            speedSlider.addEventListener('input', e => {
+                const speed = parseFloat(e.target.value);
+                const bpm = Math.round(30 + ((speed - 0.1) / (19.9)) * (370));
+                bpmValueLabel.textContent = `${bpm} BPM`;
+            });
+
+            synthControlsContainer.addEventListener('input', e => {
+                const selectedPlanetName = document.querySelector('.planet-selector-btn.active').dataset.planet;
+                const planet = planets.find(p => p.name === selectedPlanetName);
+                if (!planet) return;
+                
+                if (e.target.id === 'synth-type-select') {
+                    const newType = e.target.value;
+                    setPlanetSynth(planet, newType, planet.chordMode);
+                    populateSynthControls(selectedPlanetName);
+                } else {
+                    const value = parseFloat(e.target.value);
+                    if (e.target.id === 'volume-slider') planet.synth.volume.value = value;
+                    if (e.target.id === 'pluck-sustain-slider') {
+                        planet.pluckSustain = value;
+                        updateEnvelope(planet, value);
+                    }
+                }
+            });
+            
+            synthControlsContainer.addEventListener('click', e => {
+                const toggle = e.target.closest('#chord-toggle');
+                if (toggle) {
+                    const selectedPlanetName = document.querySelector('.planet-selector-btn.active').dataset.planet;
+                    const planet = planets.find(p => p.name === selectedPlanetName);
+                    if (!planet) return;
+                    
+                    setPlanetSynth(planet, planet.synthType, !planet.chordMode);
+                    toggle.classList.toggle('active', planet.chordMode);
+                }
+            });
+            
+            document.getElementById('focus-button').addEventListener('click', () => {
+                const selectedPlanetName = document.querySelector('.planet-selector-btn.active').dataset.planet;
+                focusOnPlanet(selectedPlanetName);
+            });
+            document.getElementById('home-button').addEventListener('click', goHome);
+
+            document.getElementById('audio-start-button').addEventListener('click', async () => { 
+                await Tone.start(); 
+                Tone.Transport.start();
+                document.getElementById('audio-start-button').classList.add('hidden'); 
+            });
+            document.getElementById('controls-header').addEventListener('click', () => { const c = document.getElementById('controls-content'); c.classList.toggle('hidden'); document.getElementById('toggle-controls').textContent = c.classList.contains('hidden') ? '+' : '-'; });
+            window.addEventListener('resize', () => {
+                const width = window.innerWidth, height = window.innerHeight;
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+                renderer.setSize(width, height);
+                composer.setSize(width, height);
+            });
+            
+            planets.forEach(p => updateEnvelope(p, p.pluckSustain));
+            updatePlanetNotes();
+            displayPlanetEditor(planets[0].name);
+        }
+        
+        setupUI();
+        animate();
+    </script>
+</body>
+</html>
