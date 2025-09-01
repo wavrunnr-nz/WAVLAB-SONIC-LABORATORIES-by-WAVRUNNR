@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WAVDRUMMR</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            background-color: #0c0a1a;
+        }
+        .main-container {
+            background: linear-gradient(145deg, #1a1a2e, #101020);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .sequencer-pad {
+            transition: all 0.1s ease-in-out;
+            border: 1px solid #3c3c5c;
+            background-color: rgba(0,0,0,0.2);
+        }
+        .sequencer-pad.active {
+            background-color: #00ffff;
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.5), 0 0 5px rgba(255, 255, 255, 0.5) inset;
+        }
+        .sequencer-pad.playing {
+             background-color: #3c3c5c;
+        }
+        .sequencer-pad.playing.active {
+            background-color: #00cccc;
+            box-shadow: 0 0 20px rgba(0, 204, 204, 0.7);
+        }
+        .control-label {
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-size: 0.75rem;
+            color: #a0a0c0;
+        }
+        .bank-button, .action-button {
+            transition: all 0.2s ease-in-out;
+            border: 1px solid #3c3c5c;
+            background-color: rgba(0,0,0,0.2);
+        }
+        .bank-button.active, .action-button.active, #fill-button:active {
+            background-color: #00ffff;
+            border-color: #00ffff;
+            color: #0c0a1a;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0, 255, 255, 0.2);
+        }
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+            cursor: pointer;
+        }
+        input[type=range]:focus {
+            outline: none;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            background: #3c3c5c;
+            border-radius: 3px;
+            border: 1px solid #5c5c7c;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background: #00ffff;
+            margin-top: -7px;
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.7);
+            border: 2px solid #0c0a1a;
+        }
+        
+        .channel-btn {
+            width: 24px; height: 24px; font-size: 11px; font-weight: bold; border-radius: 4px;
+            border: 1px solid #3c3c5c; color: #a0a0c0;
+            transition: all 0.1s ease-in-out;
+        }
+        .channel-btn.mute.active { background-color: #ff4d4d; color: white; border-color: #ff4d4d; }
+        .channel-btn.solo.active { background-color: #4d94ff; color: white; border-color: #4d94ff; }
+        
+        select {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-color: #1a1a2e;
+            border: 1px solid #3c3c5c;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 0.875rem;
+            color: #e0e0ff;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23a0a0c0' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7' /%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.5rem center;
+            background-size: 1.5em 1.5em;
+            cursor: pointer;
+        }
+        .param-slider-label {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #a0a0c0;
+        }
+        .scope-canvas { background-color: #0c0a1a; border-radius: 4px; border: 1px solid #3c3c5c; }
+        #energy-orb-canvas {
+            background-color: #0c0a1a;
+            border-radius: 50%;
+            border: 1px solid #3c3c5c;
+        }
+        .control-panel {
+             background-color: rgba(0,0,0,0.2);
+             border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .control-group-title {
+            color: #00ffff;
+            text-shadow: 0 0 5px rgba(0, 255, 255, 0.7);
+            border-bottom: 1px solid #3c3c5c;
+            padding-bottom: 0.5rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body class="text-gray-200 flex items-center justify-center min-h-screen p-4">
+
+    <div id="start-audio-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-80 flex items-center justify-center z-50">
+        <button id="start-audio-btn" class="px-8 py-4 bg-cyan-400 text-gray-900 font-bold rounded-lg text-2xl hover:bg-cyan-300 transition-all duration-200 shadow-lg" style="box-shadow: 0 0 25px rgba(0, 255, 255, 0.5);">
+            CLICK TO START
+        </button>
+    </div>
+
+    <div id="loading" class="text-center hidden">
+        <h1 class="text-2xl font-bold">Loading Industrial Audio Engine...</h1>
+        <p>Please wait a moment.</p>
+    </div>
+
+    <main id="app" class="hidden w-full max-w-screen-xl mx-auto main-container rounded-2xl shadow-2xl p-4 sm:p-6 space-y-6">
+        <header class="flex justify-between items-center">
+            <h1 class="text-3xl sm:text-4xl font-bold tracking-wider text-white" style="text-shadow: 0 0 10px #00ffff, 0 0 20px #00ffff;">WAVDRUMMR</h1>
+        </header>
+
+        <div class="control-panel p-4 rounded-lg">
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                <!-- MASTER GROUP -->
+                <div class="space-y-4 flex flex-col">
+                    <h2 class="control-label text-lg font-bold control-group-title">MASTER</h2>
+                    <div id="play-stop-button" class="w-full flex items-center justify-center px-8 py-3 bg-cyan-400 text-gray-900 font-bold rounded-lg cursor-pointer hover:bg-cyan-300 transition-all duration-200 shadow-lg" style="box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <span id="play-stop-text">PLAY</span>
+                    </div>
+                    <div class="space-y-2"><label for="tempo" class="control-label">Tempo</label><div class="flex items-center space-x-4"><input type="range" id="tempo" min="60" max="240" value="135" class="w-full"><span id="tempo-value" class="font-mono text-lg w-16 text-center">135 BPM</span></div></div>
+                    <div class="space-y-2"><label for="master-volume" class="control-label">Master Volume</label><div class="flex items-center space-x-4"><input type="range" id="master-volume" min="-40" max="12" value="0" class="w-full"><span id="master-volume-value" class="font-mono text-lg w-16 text-center">0 dB</span></div></div>
+                    <div class="space-y-2"><label class="control-label">Sound Bank</label><div id="sound-bank-controls" class="grid grid-cols-2 sm:grid-cols-4 gap-2"><button class="bank-button active font-bold py-2 rounded-lg" data-bank="0">Core</button><button class="bank-button font-bold py-2 rounded-lg" data-bank="1">Grit</button><button class="bank-button font-bold py-2 rounded-lg" data-bank="2">Deep</button><button class="bank-button font-bold py-2 rounded-lg" data-bank="3">Metal</button></div></div>
+                    <div class="grid grid-cols-2 gap-2 mt-auto pt-4">
+                        <button id="clear-sequence-btn" class="action-button text-sm font-bold py-2 rounded-lg w-full">Clear</button>
+                        <button id="fill-button" class="action-button text-sm font-bold py-2 rounded-lg w-full">FILL</button>
+                    </div>
+                </div>
+
+                <!-- MIX BUS GROUP -->
+                <div class="space-y-4">
+                     <h2 class="control-label text-lg font-bold control-group-title">MIX BUS</h2>
+                     <div class="space-y-2"><label for="pre-gain" class="control-label">Pre Gain</label><div class="flex items-center space-x-4"><input type="range" id="pre-gain" min="-24" max="24" value="6" step="1" class="w-full"><span id="pre-gain-value" class="font-mono text-sm w-16 text-center">6 dB</span></div></div>
+                     <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 items-center">
+                         <canvas id="gr-meter-canvas" width="20" height="80" class="bg-gray-800 rounded"></canvas>
+                         <div class="space-y-2">
+                            <div class="flex flex-col space-y-1"><label class="text-xs text-gray-400">Comp Style</label><select id="comp-style-select"></select></div>
+                            <div class="space-y-1"><div class="flex justify-between items-baseline"><label for="comp-amount" class="text-sm text-gray-300">Amount</label><span id="comp-amount-value" class="font-mono text-xs">0%</span></div><input type="range" id="comp-amount" min="0" max="100" value="0" step="1" class="w-full"></div>
+                         </div>
+                     </div>
+                     <div class="space-y-1"><div class="flex justify-between items-baseline"><label for="saturation" class="text-sm text-gray-300">Saturation</label><span id="saturation-value" class="font-mono text-xs">0%</span></div><input type="range" id="saturation" min="0" max="100" value="0" step="1" class="w-full"></div>
+                     <div class="space-y-1"><div class="flex justify-between items-baseline"><label for="drive" class="text-sm text-gray-300">Drive</label><span id="drive-value" class="font-mono text-xs">0.00</span></div><input type="range" id="drive" min="0" max="1" value="0" step="0.01" class="w-full"></div>
+                     <div class="space-y-1"><div class="flex justify-between items-baseline"><label for="distortion" class="text-sm text-gray-300">Distortion</label><span id="distortion-value" class="font-mono text-xs">0.00</span></div><input type="range" id="distortion" min="0" max="1" value="0" step="0.01" class="w-full"></div>
+                     <div class="space-y-1"><div class="flex justify-between items-baseline"><label for="crush" class="text-sm text-gray-300">Crush</label><span id="crush-value" class="font-mono text-xs">16 bits</span></div><input type="range" id="crush" min="2" max="16" value="16" step="1" class="w-full"></div>
+                     <div class="space-y-1"><div class="flex justify-between items-baseline"><label for="filter" class="text-sm text-gray-300">Filter</label><span id="filter-value" class="font-mono text-xs">OFF</span></div><input type="range" id="filter" min="-100" max="100" value="0" step="1" class="w-full"></div>
+                </div>
+
+                <!-- TUNING GROUP -->
+                <div class="space-y-4">
+                    <h2 class="control-label text-lg font-bold control-group-title">TUNING</h2>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="flex flex-col space-y-1"><label class="text-xs text-gray-400">Key</label><select id="key-select"></select></div>
+                        <div class="flex flex-col space-y-1"><label class="text-xs text-gray-400">Scale</label><select id="scale-select"></select></div>
+                        <div class="flex flex-col space-y-1 col-span-2"><label class="text-xs text-gray-400">Progression</label><select id="progression-select"></select></div>
+                        <div class="flex flex-col space-y-1"><label class="text-xs text-gray-400">Chord Osc</label><select id="osc-select"></select></div>
+                        <div class="flex flex-col space-y-1"><label class="text-xs text-gray-400">Bass Type</label><select id="bass-type-select"></select></div>
+                        <div class="space-y-1"><div class="flex justify-between items-baseline"><label for="chord-octave" class="text-sm text-gray-300">Chord Oct</label><span id="chord-octave-value" class="font-mono text-xs">3</span></div><input type="range" id="chord-octave" min="1" max="5" value="3" step="1" class="w-full"></div>
+                        <div class="space-y-1"><div class="flex justify-between items-baseline"><label for="bass-octave" class="text-sm text-gray-300">Bass Oct</label><span id="bass-octave-value" class="font-mono text-xs">1</span></div><input type="range" id="bass-octave" min="0" max="4" value="1" step="1" class="w-full"></div>
+                        <div class="space-y-1 col-span-2"><div class="flex justify-between items-baseline"><label for="chord-probability" class="text-sm text-gray-300">Probability</label><span id="chord-probability-value" class="font-mono text-xs">100%</span></div><input type="range" id="chord-probability" min="0" max="1" value="1" step="0.01" class="w-full"></div>
+                        <div class="col-span-2 grid grid-cols-3 gap-2">
+                           <button id="tune-kicks-btn" class="action-button text-xs font-bold py-2 rounded-lg">Tune Kicks</button>
+                           <button id="tune-drums-btn" class="action-button text-xs font-bold py-2 rounded-lg">Tune Drums</button>
+                           <button id="bass-follow-btn" class="action-button text-xs font-bold py-2 rounded-lg active">Bass Follow</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- SCOPES GROUP -->
+                <div class="space-y-4 flex flex-col items-center">
+                    <h2 class="control-label text-lg font-bold control-group-title w-full">SCOPES</h2>
+                    <canvas id="master-scope-canvas" class="scope-canvas w-full h-24"></canvas>
+                    <div class="flex-grow flex items-center justify-center gap-4 w-full">
+                        <canvas id="energy-orb-canvas" width="120" height="120"></canvas>
+                        <canvas id="particle-scope-canvas" width="120" height="120" class="scope-canvas !rounded-lg"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="control-panel p-2 rounded-lg space-y-1">
+             <div class="flex justify-end mb-2 pr-2">
+                <button id="velocity-mode-btn" class="action-button text-sm font-bold py-2 px-4 rounded-lg w-auto">Velocity</button>
+             </div>
+             <div id="sequencer-rows-container" class="space-y-1">
+                <!-- All rows will be generated here -->
+             </div>
+        </div>
+    </main>
+
+    <script>
+        // --- DOM Elements ---
+        const appContainer = document.getElementById('app');
+        const loadingIndicator = document.getElementById('loading');
+        const startAudioOverlay = document.getElementById('start-audio-overlay');
+        const startAudioBtn = document.getElementById('start-audio-btn');
+        const sequencerRowsContainer = document.getElementById('sequencer-rows-container');
+        const playStopButton = document.getElementById('play-stop-button');
+        const playStopText = document.getElementById('play-stop-text');
+        const tempoSlider = document.getElementById('tempo');
+        const tempoValue = document.getElementById('tempo-value');
+        const masterVolumeSlider = document.getElementById('master-volume');
+        const masterVolumeValue = document.getElementById('master-volume-value');
+        const preGainSlider = document.getElementById('pre-gain');
+        const preGainValue = document.getElementById('pre-gain-value');
+        const soundBankControls = document.getElementById('sound-bank-controls');
+        const saturationSlider = document.getElementById('saturation');
+        const saturationValue = document.getElementById('saturation-value');
+        const driveSlider = document.getElementById('drive');
+        const driveValue = document.getElementById('drive-value');
+        const distortionSlider = document.getElementById('distortion');
+        const distortionValue = document.getElementById('distortion-value');
+        const crushSlider = document.getElementById('crush');
+        const crushValue = document.getElementById('crush-value');
+        const filterSlider = document.getElementById('filter');
+        const filterValue = document.getElementById('filter-value');
+        const keySelect = document.getElementById('key-select');
+        const scaleSelect = document.getElementById('scale-select');
+        const oscSelect = document.getElementById('osc-select');
+        const bassTypeSelect = document.getElementById('bass-type-select');
+        const progressionSelect = document.getElementById('progression-select');
+        const chordProbabilitySlider = document.getElementById('chord-probability');
+        const chordProbabilityValue = document.getElementById('chord-probability-value');
+        const chordOctaveSlider = document.getElementById('chord-octave');
+        const chordOctaveValue = document.getElementById('chord-octave-value');
+        const bassOctaveSlider = document.getElementById('bass-octave');
+        const bassOctaveValue = document.getElementById('bass-octave-value');
+        const tuneKicksBtn = document.getElementById('tune-kicks-btn');
+        const tuneDrumsBtn = document.getElementById('tune-drums-btn');
+        const bassFollowBtn = document.getElementById('bass-follow-btn');
+        const compStyleSelect = document.getElementById('comp-style-select');
+        const compAmountSlider = document.getElementById('comp-amount');
+        const compAmountValue = document.getElementById('comp-amount-value');
+        const masterScopeCanvas = document.getElementById('master-scope-canvas');
+        const grMeterCanvas = document.getElementById('gr-meter-canvas');
+        const energyOrbCanvas = document.getElementById('energy-orb-canvas');
+        const particleScopeCanvas = document.getElementById('particle-scope-canvas');
+        const clearSequenceBtn = document.getElementById('clear-sequence-btn');
+        const fillButton = document.getElementById('fill-button');
+        const velocityModeBtn = document.getElementById('velocity-mode-btn');
+
+
+        // --- Sequencer & Audio Setup ---
+        const NUM_STEPS = 16;
+        const NUM_SOUNDS = 12;
+        const SOUND_NAMES = ['Kick', 'Kick 2', 'Snare', 'Clap', 'Hat', 'OpenHat', 'Tom 1', 'Perc', 'Ride', 'Cymbal', 'Chord', 'Bass'];
+        let sequenceState = Array(NUM_SOUNDS).fill(null).map(() => Array(NUM_STEPS).fill(0));
+        let muteStates = Array(NUM_SOUNDS).fill(false);
+        let soloStates = Array(NUM_SOUNDS).fill(false);
+        let currentBankIndex = 0;
+        const soundChannels = [];
+        const canvasContexts = [];
+        let chordDuration = 0.5;
+        let currentChordRoot = null;
+        let isFillActive = false;
+        let isVelocityModeActive = false;
+        
+        // --- Melodic State ---
+        let tuneKicksActive = false;
+        let tuneDrumsActive = false;
+        let bassFollowsChord = true;
+        
+        // --- Chord & Scale Data ---
+        const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+        const SCALES = { major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10], dorian: [0, 2, 3, 5, 7, 9, 10], mixolydian: [0, 2, 4, 5, 7, 9, 10], phrygian: [0, 1, 3, 5, 7, 8, 10] };
+        const PROGRESSIONS = { 'Root Only': [0], 'i-VI-III-VII': [0, 5, 2, 6], 'I-V-vi-IV': [0, 4, 5, 3], 'Moody': [0, 3, 5, 4], 'Deep': [0, 6, 5, 2], 'ii-V-I': [1, 4, 0], 'Jazz': [1, 4, 0, 3] };
+        const OSC_TYPES = ['fmsine', 'fatsawtooth', 'fatsquare', 'fatriangle', 'sawtooth', 'square', 'triangle', 'sine', 'pulse'];
+        const BASS_TYPES = ['Sub', 'Jungle', 'Wobble', 'Acid', 'Square', 'Saw'];
+        const WOBBLE_RATES = ['32n', '16t', '16n', '8t', '8n', '4t', '4n'];
+        const COMP_STYLES = ['Vinyl', 'Drive', 'Tape'];
+        let currentKey = 'C';
+        let currentScale = 'minor';
+        let currentProgression = 'Root Only';
+        let chordProbability = 1;
+        let currentOctave = 3;
+        let bassOctave = 1;
+
+        // --- Declare Tone.js object variables ---
+        let preGain, tapeSaturation, masterSaturation, masterDrive, masterDistortion, masterCrusher, masterCompressor, masterLPF, masterHPF, scopeGain, masterMeter, masterFFT, masterWaveform;
+        let soundBanks, bassSynths, currentBassSynth, bassLFO, sequence;
+        
+        function initializeApp() {
+            // --- Master Effects Chain ---
+            preGain = new Tone.Volume(6);
+            tapeSaturation = new Tone.Distortion(0); // This is part of the "Comp Style"
+            tapeSaturation.oversample = '4x';
+            masterSaturation = new Tone.Chebyshev(1);
+            masterDrive = new Tone.Distortion(0); 
+            masterDrive.oversample = '4x';
+            masterDistortion = new Tone.Distortion(0);
+            masterCrusher = new Tone.BitCrusher(16);
+            masterCompressor = new Tone.Compressor(-24, 12);
+            masterLPF = new Tone.Filter(20000, "lowpass");
+            masterHPF = new Tone.Filter(20, "highpass");
+            scopeGain = new Tone.Volume(18); // Increased Makeup gain for scopes
+            masterMeter = new Tone.Meter();
+            masterFFT = new Tone.FFT(32);
+            masterWaveform = new Tone.Waveform(512);
+            
+            // Correct Audio Routing: Chain effects, then connect analysis nodes in parallel
+            preGain.chain(tapeSaturation, masterSaturation, masterDrive, masterDistortion, masterCrusher, masterCompressor, masterLPF, masterHPF, Tone.Destination);
+            masterHPF.chain(scopeGain).fan(masterMeter, masterWaveform, masterFFT);
+
+
+            // --- Tone.js Sound Synthesis ---
+            soundBanks = [ 
+                // CORE BANK
+                { 'Kick': new Tone.MembraneSynth({ pitchDecay: 0.02, octaves: 6, oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: 0.5, sustain: 0.01, release: 0.8 }, volume: 0 }), 'Kick 2': new Tone.MembraneSynth({ pitchDecay: 0.04, octaves: 8, oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: 0.3, sustain: 0, release: 0.5 }, volume: 0 }), 'Snare': new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.001, decay: 0.15, sustain: 0 }, volume: 3 }), 'Clap': new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.001, decay: 0.1, sustain: 0.05, release: 0.1 }, volume: 0 }), 'Hat': new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.001, decay: 0.05, sustain: 0 }, volume: -10 }), 'OpenHat': new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.001, decay: 0.3, sustain: 0 }, volume: -10 }), 'Tom 1': new Tone.MembraneSynth({ pitchDecay: 0.1, octaves: 3, envelope: { attack: 0.01, decay: 0.2 }, volume: 3 }), 'Perc': new Tone.MetalSynth({ frequency: 500, envelope: { attack: 0.001, decay: 0.1, release: 0.05 }, harmonicity: 2, modulationIndex: 10, resonance: 800, octaves: 2, volume: 0 }), 'Ride': new Tone.MetalSynth({ frequency: 400, envelope: { attack: 0.001, decay: 1.0, release: 0.1 }, harmonicity: 8, modulationIndex: 40, resonance: 3000, octaves: 2, volume: -3 }), 'Cymbal': new Tone.MetalSynth({ frequency: 200, envelope: { attack: 0.001, decay: 1.5, release: 0.2 }, harmonicity: 5.1, modulationIndex: 64, resonance: 4000, octaves: 2.5, volume: -3 }), 'Chord': new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'fmsine' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.2, release: 1.0 }, volume: 0 }) },
+                // GRIT BANK
+                { 'Kick': new Tone.MembraneSynth({ pitchDecay: 0.02, octaves: 6, oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: 0.4, sustain: 0, release: 0.8 }, volume: 0 }), 'Kick 2': new Tone.MembraneSynth({ pitchDecay: 0.08, octaves: 3, oscillator: { type: 'fmsquare' }, envelope: { attack: 0.01, decay: 0.4, sustain: 0, release: 0.6 }, volume: 0 }), 'Snare': new Tone.NoiseSynth({ noise: { type: 'pink' }, envelope: { attack: 0.005, decay: 0.2, sustain: 0 }, volume: 3 }), 'Clap': new Tone.NoiseSynth({ noise: { type: 'pink' }, envelope: { attack: 0.01, decay: 0.15, sustain: 0, release: 0.2 }, volume: -1 }), 'Hat': new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.001, decay: 0.04, sustain: 0 }, volume: -12 }), 'OpenHat': new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.001, decay: 0.25, sustain: 0 }, volume: -12 }), 'Tom 1': new Tone.MembraneSynth({ pitchDecay: 0.15, octaves: 2, envelope: { attack: 0.01, decay: 0.3 }, volume: 3 }), 'Perc': new Tone.PluckSynth({ attackNoise: 2, dampening: 5000, resonance: 0.8, volume: 0 }), 'Ride': new Tone.MetalSynth({ frequency: 300, envelope: { attack: 0.001, decay: 1.5, release: 0.1 }, harmonicity: 4, modulationIndex: 30, resonance: 2500, octaves: 2, volume: -4 }), 'Cymbal': new Tone.MetalSynth({ frequency: 250, envelope: { attack: 0.001, decay: 1.2, release: 0.1 }, harmonicity: 5, modulationIndex: 50, resonance: 2000, octaves: 3, volume: -4 }), 'Chord': new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'fmsine' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.2, release: 1.0 }, volume: 0 }) },
+                // DEEP BANK
+                { 'Kick': new Tone.MembraneSynth({ pitchDecay: 0.05, octaves: 5, oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: 0.8, sustain: 0.01, release: 1.2 }, volume: 0 }), 'Kick 2': new Tone.MembraneSynth({ pitchDecay: 0.04, octaves: 6, oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: 0.6, sustain: 0, release: 1 }, volume: 0 }), 'Snare': new Tone.NoiseSynth({ noise: { type: 'white' }, filter: { type: 'bandpass', Q: 2, frequency: 1200 }, envelope: { attack: 0.01, decay: 0.18, sustain: 0 }, volume: 3 }), 'Clap': new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.001, decay: 0.12, sustain: 0.02, release: 0.15 }, volume: -2 }), 'Hat': new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.001, decay: 0.06, sustain: 0 }, volume: -15 }), 'OpenHat': new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.001, decay: 0.4, sustain: 0 }, volume: -15 }), 'Tom 1': new Tone.MembraneSynth({ pitchDecay: 0.2, octaves: 3, envelope: { attack: 0.01, decay: 0.3 }, volume: 3 }), 'Perc': new Tone.MembraneSynth({ pitchDecay: 0.08, octaves: 8, envelope: { attack: 0.001, decay: 0.15, release: 0.1 }, volume: -2 }), 'Ride': new Tone.MetalSynth({ frequency: 250, envelope: { attack: 0.001, decay: 1.8, release: 0.2 }, harmonicity: 7, modulationIndex: 30, resonance: 3500, octaves: 2, volume: -6 }), 'Cymbal': new Tone.MetalSynth({ frequency: 200, envelope: { attack: 0.001, decay: 1.5, release: 0.2 }, harmonicity: 5.1, modulationIndex: 64, resonance: 4000, octaves: 2.5, volume: -6 }), 'Chord': new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'fmsine' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.2, release: 1.0 }, volume: 0 }) },
+                // METAL BANK
+                { 'Kick': new Tone.MembraneSynth({ pitchDecay: 0.01, octaves: 4, oscillator: { type: 'sine' }, envelope: { attack: 0.001, decay: 0.4, sustain: 0, release: 0.8 }, volume: 0 }), 'Kick 2': new Tone.MembraneSynth({ pitchDecay: 0.02, octaves: 5, oscillator: { type: 'triangle' }, envelope: { attack: 0.01, decay: 0.3, sustain: 0, release: 0.6 }, volume: 0 }), 'Snare': new Tone.MetalSynth({ frequency: 350, envelope: { attack: 0.001, decay: 0.12, release: 0.05 }, harmonicity: 1.2, modulationIndex: 8, resonance: 1200, octaves: 2, volume: 3 }), 'Clap': new Tone.MetalSynth({ frequency: 900, envelope: { attack: 0.001, decay: 0.1, release: 0.1 }, harmonicity: 1.5, modulationIndex: 4, resonance: 2500, volume: -2 }), 'Hat': new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.001, decay: 0.03, sustain: 0 }, volume: -12 }), 'OpenHat': new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.001, decay: 0.3, sustain: 0 }, volume: -12 }), 'Tom 1': new Tone.MetalSynth({ frequency: 200, envelope: { attack: 0.01, decay: 0.25 }, harmonicity: 2.5, modulationIndex: 15, resonance: 400, volume: 3 }), 'Perc': new Tone.FMSynth({ modulationIndex: 25, harmonicity: 0.8, envelope: { attack: 0.001, decay: 0.08 }, volume: -2 }), 'Ride': new Tone.MetalSynth({ frequency: 400, envelope: { attack: 0.001, decay: 2.0, release: 0.1 }, harmonicity: 10, modulationIndex: 35, resonance: 4000, octaves: 2, volume: -5 }), 'Cymbal': new Tone.MetalSynth({ frequency: 350, envelope: { attack: 0.001, decay: 1.8, release: 0.1 }, harmonicity: 12, modulationIndex: 30, resonance: 3000, octaves: 2, volume: -5 }), 'Chord': new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'fmsine' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0.2, release: 1.0 }, volume: 0 }) }
+            ];
+
+            // --- Bass Synths ---
+            bassSynths = {
+                'Sub': new Tone.MonoSynth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, decay: 0.2, sustain: 0.1, release: 0.5 }, filter: { type: 'lowpass', frequency: 800 }, filterEnvelope: { attack: 0.01, decay: 0.1, sustain: 0, baseFrequency: 200, octaves: 2 }, volume: 3 }),
+                'Jungle': new Tone.MonoSynth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, decay: 0.5, sustain: 0, release: 0.8 }, frequency: 'C1', pitchDecay: 0.05, octaves: 5, volume: 3 }),
+                'Wobble': new Tone.MonoSynth({ oscillator: { type: 'fatsawtooth' }, envelope: { attack: 0.01, decay: 0.2, sustain: 0.1, release: 0.5 }, filter: { type: 'lowpass', frequency: 100, rolloff: -24 }, filterEnvelope: { attack: 0.05, decay: 0.1, sustain: 0.8, release: 0.5, baseFrequency: 100, octaves: 3 }, volume: 3 }),
+                'Acid': new Tone.MonoSynth({ oscillator: { type: 'sawtooth' }, envelope: { attack: 0.01, decay: 0.3, sustain: 0.1, release: 0.5 }, filter: { type: 'lowpass', frequency: 800, Q: 5 }, filterEnvelope: { attack: 0.05, decay: 0.2, sustain: 0.2, release: 0.5, baseFrequency: 200, octaves: 4 }, volume: 0 }),
+                'Square': new Tone.MonoSynth({ oscillator: { type: 'fatsquare' }, envelope: { attack: 0.01, decay: 0.4, sustain: 0.1, release: 0.8 }, filter: { type: 'lowpass', frequency: 1200, Q: 1 }, filterEnvelope: { attack: 0.02, decay: 0.2, sustain: 0.1, release: 0.5, baseFrequency: 400, octaves: 3 }, volume: 0 }),
+                'Saw': new Tone.MonoSynth({ oscillator: { type: 'fatsawtooth' }, envelope: { attack: 0.02, decay: 0.6, sustain: 0.1, release: 1.0 }, filter: { type: 'lowpass', frequency: 1500, Q: 2 }, filterEnvelope: { attack: 0.03, decay: 0.3, sustain: 0.2, release: 0.6, baseFrequency: 500, octaves: 4 }, volume: -3 }),
+            };
+            currentBassSynth = bassSynths['Sub'];
+            bassLFO = new Tone.LFO("8n", 200, 2000).start();
+            bassLFO.connect(bassSynths['Wobble'].filter.frequency);
+            
+            // --- Audio Routing for Mute/Solo and Individual Effects ---
+            for (let i = 0; i < NUM_SOUNDS; i++) {
+                const soundName = SOUND_NAMES[i];
+                const channel = new Tone.Channel();
+                const distortion = new Tone.Distortion(0);
+                const waveform = new Tone.Waveform(256);
+                let filter;
+
+                if (soundName.includes('Hat')) {
+                    filter = new Tone.Filter(7000, 'highpass');
+                } else if (soundName === 'Snare' || soundName === 'Clap') {
+                    filter = new Tone.Filter(5000, 'highpass');
+                }
+
+                if (soundName === 'Chord') {
+                    const chordFilter = new Tone.Filter(2000, 'lowpass');
+                    const filterEnv = new Tone.FrequencyEnvelope({ attack: 0.01, decay: 0.4, sustain: 0, release: 0.1, baseFrequency: 200, octaves: 3 });
+                    filterEnv.connect(chordFilter.frequency);
+                    const reverb = new Tone.Reverb({ decay: 8, wet: 0 });
+                    const delay = new Tone.FeedbackDelay({ delayTime: '8n.', feedback: 0.4, wet: 0 });
+                    channel.chain(chordFilter, delay, reverb, distortion, preGain);
+                    channel.fan(waveform);
+                    soundChannels.push({ channel, distortion, filter: chordFilter, filterEnv, reverb, delay, waveform });
+                } else if (filter) {
+                    channel.chain(filter, distortion, preGain);
+                    channel.fan(waveform);
+                    soundChannels.push({ channel, distortion, waveform, filter });
+                } else {
+                    channel.chain(distortion, preGain);
+                    channel.fan(waveform);
+                    soundChannels.push({ channel, distortion, waveform });
+                }
+            }
+            
+            // --- Sequence ---
+            sequence = new Tone.Sequence((time, col) => {
+                const progression = PROGRESSIONS[currentProgression];
+                const [bar] = Tone.Transport.position.split(':');
+                const currentBar = parseInt(bar);
+                const currentBarInCycle = currentBar % 8;
+                const cycleLength = NUM_STEPS * 8;
+                const stepsPerChord = cycleLength / progression.length;
+                const currentStepInCycle = (currentBarInCycle * NUM_STEPS) + col;
+                const progressionIndex = Math.floor(currentStepInCycle / stepsPerChord);
+                const degree = progression[progressionIndex];
+                if (degree !== undefined) {
+                    const rootNoteIndex = NOTES.indexOf(currentKey);
+                    const scaleIntervals = SCALES[currentScale];
+                    const rootOfChordInterval = scaleIntervals[degree];
+                    currentChordRoot = NOTES[(rootNoteIndex + rootOfChordInterval) % 12];
+                }
+
+                sequenceState.forEach((row, soundIndex) => { 
+                    const velocity = row[col];
+                    const isPercussion = soundIndex < (NUM_SOUNDS - 2);
+                    let triggerVelocity = velocity;
+
+                    if (isFillActive && isPercussion && Math.random() > 0.5) {
+                        if (velocity === 0) {
+                            triggerVelocity = Math.random() * 0.5 + 0.5;
+                        }
+                    }
+
+                    if (triggerVelocity > 0) {
+                        const soundName = SOUND_NAMES[soundIndex];
+                        const activeSound = soundBanks[currentBankIndex][soundName];
+
+                        if (soundName === 'Chord') { 
+                            if (Math.random() < chordProbability) {
+                                const chord = getChordNotes(degree);
+                                const { filterEnv } = soundChannels[soundIndex];
+                                activeSound.triggerAttackRelease(chord, '16n', time, triggerVelocity);
+                                filterEnv.triggerAttackRelease('16n', time);
+                            } 
+                        } else if (soundName === 'Bass') {
+                            const note = (bassFollowsChord ? currentChordRoot : currentKey) + bassOctave;
+                            currentBassSynth.triggerAttackRelease(note, '16n', time, triggerVelocity);
+                        } else if (soundName.includes('Kick')) { 
+                            const note = tuneKicksActive ? currentKey + '0' : 'C1';
+                            activeSound.triggerAttackRelease(note, '16n', time, triggerVelocity);
+                        } else { // Handles Tom, Perc, Hat, Clap, Snare, etc.
+                            if(activeSound) {
+                                if (tuneDrumsActive && (soundName.includes('Tom') || soundName.includes('Perc'))) {
+                                    // --- TUNED PERCUSSION LOGIC ---
+                                    const note = currentChordRoot + '3';
+                                    if (activeSound instanceof Tone.PluckSynth) {
+                                        activeSound.triggerAttackRelease(note, time);
+                                    } else if (activeSound instanceof Tone.MetalSynth) {
+                                        if (activeSound.frequency) {
+                                            activeSound.frequency.value = Tone.Frequency(note).toFrequency();
+                                        }
+                                        activeSound.triggerAttack(time, triggerVelocity);
+                                    } else if (activeSound instanceof Tone.NoiseSynth) {
+                                         if(activeSound.frequency) {
+                                            activeSound.frequency.value = Tone.Frequency(note).toFrequency();
+                                        }
+                                        activeSound.triggerAttackRelease('16n', time, triggerVelocity);
+                                    } else {
+                                        activeSound.triggerAttackRelease(note, '16n', time, triggerVelocity);
+                                    }
+                                } else {
+                                    // --- STANDARD PERCUSSION LOGIC ---
+                                    if (activeSound instanceof Tone.MetalSynth) {
+                                        activeSound.triggerAttack(time, triggerVelocity);
+                                    } else if (activeSound instanceof Tone.NoiseSynth) {
+                                        activeSound.triggerAttackRelease('16n', time, triggerVelocity);
+                                    } else if (activeSound instanceof Tone.MembraneSynth || activeSound instanceof Tone.FMSynth) {
+                                        activeSound.triggerAttackRelease('C2', '16n', time, triggerVelocity);
+                                    } else if (activeSound instanceof Tone.PluckSynth) {
+                                        activeSound.triggerAttackRelease('C5', time);
+                                    }
+                                }
+                            }
+                        }
+                    } 
+                });
+                Tone.Draw.schedule(() => { document.querySelectorAll('.sequencer-pad').forEach(pad => pad.classList.remove('playing')); document.querySelectorAll(`.col-${col}`).forEach(pad => pad.classList.add('playing')); }, time);
+            }, Array.from(Array(NUM_STEPS).keys()), '16n');
+
+            // --- UI and FINAL SETUP ---
+            populateSelectors();
+            updateAudioRouting();
+            createGrid();
+            SOUND_NAMES.forEach((_, index) => { 
+                const canvas = document.getElementById(`scope-${index}`); 
+                if (canvas) canvasContexts[index] = canvas.getContext('2d');
+            });
+            preGainSlider.value = 6;
+            preGain.volume.value = 6;
+            preGainValue.textContent = '6 dB';
+
+            masterVolumeSlider.value = 0;
+            Tone.Destination.volume.value = 0;
+            masterVolumeValue.textContent = '0 dB';
+
+            masterDrive.distortion = parseFloat(driveSlider.value);
+            masterDistortion.distortion = parseFloat(distortionSlider.value);
+            masterCrusher.bits.value = parseInt(crushSlider.value);
+            filterSlider.dispatchEvent(new Event('input'));
+            compAmountSlider.dispatchEvent(new Event('input'));
+
+            particleScopeCtx = particleScopeCanvas.getContext('2d');
+            
+            setupEventListeners();
+        }
+
+        function updateAudioRouting() {
+            soundChannels.forEach((soundChannel, i) => {
+                const soundName = SOUND_NAMES[i];
+                soundChannel.waveform.input.disconnect(); // Disconnect waveform analyzer
+        
+                if (soundName === 'Bass') {
+                    Object.values(bassSynths).forEach(synth => synth.disconnect());
+                    currentBassSynth.connect(soundChannel.channel);
+                } else {
+                     soundBanks.forEach(bank => {
+                        if (bank[soundName]) {
+                            bank[soundName].disconnect();
+                        }
+                    });
+                    const activeSynth = soundBanks[currentBankIndex][soundName];
+                    if (activeSynth) {
+                        activeSynth.connect(soundChannel.channel);
+                    }
+                }
+                soundChannel.channel.fan(soundChannel.waveform); // Reconnect waveform analyzer
+            });
+        }
+
+        function getChordNotes(degree) {
+            const rootNoteIndex = NOTES.indexOf(currentKey);
+            const scaleIntervals = SCALES[currentScale];
+            const rootOfChordInterval = scaleIntervals[degree];
+            const note1 = NOTES[(rootNoteIndex + rootOfChordInterval) % 12] + currentOctave;
+            const note2 = NOTES[(rootNoteIndex + scaleIntervals[(degree + 2) % scaleIntervals.length]) % 12] + currentOctave;
+            const note3 = NOTES[(rootNoteIndex + scaleIntervals[(degree + 4) % scaleIntervals.length]) % 12] + currentOctave;
+            return [note1, note2, note3];
+        }
+
+        function createGrid() {
+            sequencerRowsContainer.innerHTML = ''; 
+
+            SOUND_NAMES.forEach((soundName, soundIndex) => {
+                const rowEl = document.createElement('div');
+                rowEl.classList.add('sequencer-row', 'grid', 'gap-4', 'items-center', 'p-2', 'rounded-lg', 'hover:bg-gray-700/50', 'transition-colors', 'duration-150');
+                rowEl.style.gridTemplateColumns = 'minmax(280px, 1.5fr) minmax(64px, auto) minmax(400px, 2fr) minmax(280px, 1fr)';
+                const labelContainer = document.createElement('div');
+                labelContainer.classList.add('flex', 'items-center', 'justify-between', 'h-full', 'gap-3');
+                
+                const initialVolume = soundChannels[soundIndex] ? soundChannels[soundIndex].channel.volume.value : 0;
+
+                labelContainer.innerHTML = `
+                    <span class="text-sm font-bold text-gray-400 text-left truncate w-16">${soundName}</span>
+                    <div class="flex-grow flex items-center">
+                        <input type="range" min="-40" max="6" value="${initialVolume}" step="1" class="w-full channel-volume-slider" data-sound-index="${soundIndex}">
+                    </div>
+                    <div class="flex items-center space-x-1">
+                        <button class="channel-btn mute" data-sound="${soundIndex}">M</button>
+                        <button class="channel-btn solo" data-sound="${soundIndex}">S</button>
+                    </div>
+                `;
+                rowEl.appendChild(labelContainer);
+                
+                const canvasContainer = document.createElement('div');
+                canvasContainer.classList.add('flex', 'items-center', 'justify-center', 'h-full');
+                const canvas = document.createElement('canvas');
+                canvas.width = 64; canvas.height = 32;
+                canvas.classList.add('scope-canvas');
+                canvas.id = `scope-${soundIndex}`;
+                canvasContainer.appendChild(canvas);
+                rowEl.appendChild(canvasContainer);
+
+                const padsContainer = document.createElement('div');
+                padsContainer.classList.add('grid', 'gap-1', 'sm:gap-2');
+                padsContainer.style.gridTemplateColumns = `repeat(${NUM_STEPS}, minmax(0, 1fr))`;
+                for (let step = 0; step < NUM_STEPS; step++) { 
+                    const pad = document.createElement('div'); 
+                    pad.classList.add('sequencer-pad', 'rounded-md', 'cursor-pointer', 'aspect-square', `col-${step}`, `row-${soundIndex}`); 
+                    const velocity = sequenceState[soundIndex][step];
+                    if (velocity > 0) {
+                        pad.classList.add('active');
+                        pad.style.opacity = 0.4 + velocity * 0.6;
+                    }
+                    pad.dataset.sound = soundIndex; 
+                    pad.dataset.step = step; 
+                    padsContainer.appendChild(pad); 
+                }
+                rowEl.appendChild(padsContainer);
+                const paramsContainer = document.createElement('div');
+                paramsContainer.classList.add('grid', 'grid-cols-4', 'gap-x-3', 'gap-y-1', 'items-center');
+                const soundParams = getParamsForSound(soundName);
+                soundParams.forEach(param => { const paramEl = document.createElement('div'); paramEl.classList.add('flex', 'flex-col', 'space-y-1'); const label = `<label class="param-slider-label text-gray-400">${param.label}</label>`; const slider = `<input type="range" min="${param.min}" max="${param.max}" value="${param.value}" step="${param.step}" data-sound-index="${soundIndex}" data-param-path="${param.path}">`; paramEl.innerHTML = label + slider; paramsContainer.appendChild(paramEl); });
+                rowEl.appendChild(paramsContainer);
+                sequencerRowsContainer.appendChild(rowEl);
+            });
+        }
+
+        function getParamsForSound(soundName) {
+            if (soundName === 'Bass') { 
+                const bassType = bassTypeSelect.value;
+                const defaults = bassSynths[bassType].get();
+                if (bassType === 'Sub') return [ { label: 'Punch', path: 'filterEnvelope.attack', min: 0.001, max: 0.1, step: 0.001, value: defaults.filterEnvelope.attack }, { label: 'Decay', path: 'envelope.decay', min: 0.1, max: 1.5, step: 0.01, value: defaults.envelope.decay }, { label: 'Tone', path: 'filter.frequency', min: 100, max: 1000, step: 10, value: defaults.filter.frequency }, { label: 'Drive', path: 'distortion', min: 0, max: 1, step: 0.01, value: 0 } ];
+                if (bassType === 'Wobble') return [ { label: 'Speed', path: 'lfo.rate', min: 0, max: WOBBLE_RATES.length - 1, step: 1, value: 4 }, { label: 'Filter', path: 'filter.frequency', min: 100, max: 4000, step: 10, value: defaults.filter.frequency }, { label: 'Filt Env', path: 'filterEnvelope.octaves', min: 0, max: 7, step: 0.1, value: defaults.filterEnvelope.octaves }, { label: 'Drive', path: 'distortion', min: 0, max: 1, step: 0.01, value: 0 } ];
+                if (bassType === 'Jungle') return [ { label: 'Punch', path: 'envelope.attack', min: 0.001, max: 0.1, step: 0.001, value: defaults.envelope.attack }, { label: 'Length', path: 'envelope.decay', min: 0.1, max: 1.5, step: 0.01, value: defaults.envelope.decay }, { label: 'Drop', path: 'pitchDecay', min: 0.01, max: 0.2, step: 0.01, value: defaults.pitchDecay }, { label: 'Drive', path: 'distortion', min: 0, max: 1, step: 0.01, value: 0 } ];
+                if (bassType === 'Acid') return [ { label: 'Decay', path: 'envelope.decay', min: 0.1, max: 1, step: 0.01, value: defaults.envelope.decay }, { label: 'Filter', path: 'filter.frequency', min: 200, max: 5000, step: 10, value: defaults.filter.frequency }, { label: 'Reso', path: 'filter.Q', min: 1, max: 20, step: 0.1, value: defaults.filter.Q }, { label: 'Filt Env', path: 'filterEnvelope.octaves', min: 1, max: 7, step: 0.1, value: defaults.filterEnvelope.octaves } ];
+                if (bassType === 'Square' || bassType === 'Saw') return [ { label: 'Decay', path: 'envelope.decay', min: 0.1, max: 1.5, step: 0.01, value: defaults.envelope.decay }, { label: 'Filter', path: 'filter.frequency', min: 200, max: 5000, step: 10, value: defaults.filter.frequency }, { label: 'Filt Env', path: 'filterEnvelope.octaves', min: 1, max: 7, step: 0.1, value: defaults.filterEnvelope.octaves }, { label: 'Drive', path: 'distortion', min: 0, max: 1, step: 0.01, value: 0 } ];
+            }
+
+            const synth = soundBanks[currentBankIndex][soundName];
+            if (!synth) return [];
+            const soundIndex = SOUND_NAMES.indexOf(soundName);
+            const soundChannel = soundChannels[soundIndex];
+            const defaults = synth.get();
+
+            if (synth instanceof Tone.MembraneSynth) {
+                return [ 
+                    { label: 'Decay', path: 'envelope.decay', min: 0.01, max: 1, step: 0.01, value: defaults.envelope.decay }, 
+                    { label: 'Tune', path: 'pitchDecay', min: 0.001, max: 0.2, step: 0.001, value: defaults.pitchDecay }, 
+                    { label: 'Tone', path: 'octaves', min: 1, max: 12, step: 0.1, value: defaults.octaves }, 
+                    { label: 'Drive', path: 'distortion', min: 0, max: 1, step: 0.01, value: soundChannel.distortion.distortion } 
+                ];
+            } else if (synth instanceof Tone.NoiseSynth) {
+                 const params = [
+                    { label: 'Decay', path: 'envelope.decay', min: 0.01, max: 0.5, step: 0.01, value: defaults.envelope.decay },
+                    { label: 'Drive', path: 'distortion', min: 0, max: 1, step: 0.01, value: soundChannel.distortion.distortion }
+                ];
+                if (soundChannel.filter) {
+                    params.splice(1, 0, { label: 'Tone', path: 'effects.filter', min: 500, max: 15000, step: 100, value: soundChannel.filter.frequency.value });
+                }
+                return params;
+            } else if (synth instanceof Tone.MetalSynth) {
+                 return [ 
+                    { label: 'Decay', path: 'envelope.decay', min: 0.01, max: 1.5, step: 0.01, value: defaults.envelope.decay }, 
+                    { label: 'Tune', path: 'frequency', min: 100, max: 1000, step: 10, value: defaults.frequency }, 
+                    { label: 'Tone', path: 'harmonicity', min: 1, max: 20, step: 0.1, value: defaults.harmonicity }, 
+                    { label: 'Drive', path: 'distortion', min: 0, max: 1, step: 0.01, value: soundChannel.distortion.distortion } 
+                ];
+            } else if (synth instanceof Tone.PluckSynth) {
+                return [
+                    { label: 'Decay', path: 'dampening', min: 1000, max: 7000, step: 100, value: defaults.dampening },
+                    { label: 'Tone', path: 'resonance', min: 0, max: 0.99, step: 0.01, value: defaults.resonance },
+                    { label: 'Atk Noise', path: 'attackNoise', min: 0.1, max: 10, step: 0.1, value: defaults.attackNoise },
+                    { label: 'Drive', path: 'distortion', min: 0, max: 1, step: 0.01, value: soundChannel.distortion.distortion }
+                ];
+            } else if (synth instanceof Tone.FMSynth) {
+                 return [
+                    { label: 'Decay', path: 'envelope.decay', min: 0.01, max: 1, step: 0.01, value: defaults.envelope.decay },
+                    { label: 'Tone', path: 'harmonicity', min: 0.1, max: 10, step: 0.1, value: defaults.harmonicity },
+                    { label: 'Tune', path: 'modulationIndex', min: 0.1, max: 40, step: 0.1, value: defaults.modulationIndex },
+                    { label: 'Drive', path: 'distortion', min: 0, max: 1, step: 0.01, value: soundChannel.distortion.distortion }
+                ];
+            } else if (synth instanceof Tone.PolySynth) {
+                return [ 
+                    { label: 'Filt Env', path: 'effects.filterEnvOctaves', min: 0, max: 7, step: 0.1, value: 3 }, 
+                    { label: 'Reverb', path: 'effects.reverbWet', min: 0, max: 1, step: 0.01, value: 0 }, 
+                    { label: 'Delay', path: 'effects.delayWet', min: 0, max: 1, step: 0.01, value: 0 }, 
+                    { label: 'Drive', path: 'distortion', min: 0, max: 1, step: 0.01, value: soundChannel.distortion.distortion }, 
+                ];
+            }
+            return [];
+        }
+        
+        function applyMuteSoloLogic() {
+            const isAnySoloActive = soloStates.includes(true);
+            soundChannels.forEach(({ channel }, i) => { if (isAnySoloActive) { channel.mute = !soloStates[i] || muteStates[i]; } else { channel.mute = muteStates[i]; } });
+        }
+
+        function setupEventListeners() {
+            const mainApp = document.getElementById('app');
+            
+            mainApp.addEventListener('click', (e) => { 
+                const target = e.target; 
+                if (target.classList.contains('sequencer-pad')) { 
+                    const soundIndex = parseInt(target.dataset.sound); 
+                    const stepIndex = parseInt(target.dataset.step); 
+
+                    if (isVelocityModeActive) {
+                        const velocityLevels = [0, 0.5, 0.75, 1];
+                        let currentVelocity = sequenceState[soundIndex][stepIndex];
+                        let currentIndex = velocityLevels.indexOf(currentVelocity);
+                        let nextIndex = (currentIndex + 1) % velocityLevels.length;
+                        let newVelocity = velocityLevels[nextIndex];
+                        
+                        sequenceState[soundIndex][stepIndex] = newVelocity;
+
+                        if (newVelocity > 0) {
+                            target.classList.add('active');
+                            target.style.opacity = 0.4 + newVelocity * 0.6;
+                        } else {
+                            target.classList.remove('active');
+                            target.style.opacity = 1;
+                        }
+                    } else {
+                        if (sequenceState[soundIndex][stepIndex] > 0) {
+                            sequenceState[soundIndex][stepIndex] = 0; // Turn off
+                            target.classList.remove('active');
+                            target.style.opacity = 1;
+                        } else {
+                            sequenceState[soundIndex][stepIndex] = 1; // Turn on at full velocity
+                            target.classList.add('active');
+                            target.style.opacity = 1;
+                        }
+                    }
+                } else if (target.classList.contains('mute')) { 
+                    const soundIndex = parseInt(target.dataset.sound); 
+                    muteStates[soundIndex] = !muteStates[soundIndex]; 
+                    target.classList.toggle('active', muteStates[soundIndex]); 
+                    applyMuteSoloLogic(); 
+                } else if (target.classList.contains('solo')) { 
+                    const soundIndex = parseInt(target.dataset.sound); 
+                    soloStates[soundIndex] = !soloStates[soundIndex]; 
+                    document.querySelectorAll('.channel-btn.solo').forEach((btn, i) => btn.classList.toggle('active', soloStates[i])); 
+                    applyMuteSoloLogic(); 
+                } 
+            });
+            mainApp.addEventListener('input', (e) => {
+                const target = e.target;
+                
+                if (target.classList.contains('channel-volume-slider')) {
+                    const soundIndex = parseInt(target.dataset.soundIndex);
+                    const value = parseFloat(target.value);
+                    if (soundChannels[soundIndex]) {
+                        soundChannels[soundIndex].channel.volume.value = value;
+                    }
+                    return;
+                }
+                
+                if (target.type === 'range' && target.dataset.paramPath) {
+                    const soundIndex = parseInt(target.dataset.soundIndex);
+                    const paramPath = target.dataset.paramPath;
+                    let value = parseFloat(target.value);
+                    const soundChannel = soundChannels[soundIndex];
+                    if (paramPath === 'distortion') { soundChannel.distortion.distortion = value; return; }
+                    if (paramPath === 'effects.filterEnvOctaves') { soundChannel.filterEnv.octaves = value; return; }
+                    if (paramPath === 'effects.reverbWet') { soundChannel.reverb.wet.value = value; return; }
+                    if (paramPath === 'effects.delayWet') { soundChannel.delay.wet.value = value; return; }
+                    if (paramPath === 'effects.filter') {
+                        if (soundChannel.filter) {
+                            soundChannel.filter.frequency.value = value;
+                        }
+                        return;
+                    }
+                    if (paramPath === 'noise.type') { value = ['white', 'pink', 'brown'][parseInt(target.value)]; }
+                    
+                    const sound = SOUND_NAMES[soundIndex] === 'Bass' ? currentBassSynth : soundBanks[currentBankIndex][SOUND_NAMES[soundIndex]];
+                    if (paramPath === 'lfo.rate') { bassLFO.frequency.value = WOBBLE_RATES[parseInt(value)]; return; }
+
+                    const pathParts = paramPath.split('.');
+                    if (pathParts.length > 1) {
+                        const paramObject = {};
+                        let current = paramObject;
+                        for (let i = 0; i < pathParts.length - 1; i++) {
+                            current[pathParts[i]] = {};
+                            current = current[pathParts[i]];
+                        }
+                        current[pathParts[pathParts.length - 1]] = value;
+                        sound.set(paramObject);
+                    } else {
+                        if (sound[paramPath] instanceof Tone.Signal || sound[paramPath] instanceof Tone.Frequency) {
+                           sound[paramPath].value = value;
+                        } else {
+                           sound.set({ [paramPath]: value });
+                        }
+                    }
+                }
+            });
+            playStopButton.addEventListener('click', () => { 
+                if (Tone.Transport.state === 'started') { 
+                    Tone.Transport.stop(); 
+                    sequence.stop(); 
+                    playStopText.textContent = 'PLAY'; 
+                    setTimeout(() => { document.querySelectorAll('.sequencer-pad').forEach(pad => pad.classList.remove('playing')); }, 100); 
+                } else { 
+                    Tone.Transport.start(); 
+                    sequence.start(0); 
+                    playStopText.textContent = 'STOP'; 
+                } 
+            });
+            tempoSlider.addEventListener('input', (e) => { Tone.Transport.bpm.value = parseInt(e.target.value); tempoValue.textContent = `${parseInt(e.target.value)} BPM`; });
+            masterVolumeSlider.addEventListener('input', (e) => { Tone.Destination.volume.value = parseInt(e.target.value); masterVolumeValue.textContent = `${parseInt(e.target.value)} dB`; });
+            preGainSlider.addEventListener('input', (e) => { preGain.volume.value = parseInt(e.target.value); preGainValue.textContent = `${parseInt(e.target.value)} dB`; });
+            soundBankControls.addEventListener('click', (e) => { 
+                if (e.target.tagName === 'BUTTON') { 
+                    currentBankIndex = parseInt(e.target.dataset.bank); 
+                    document.querySelectorAll('.bank-button').forEach(btn => btn.classList.remove('active')); 
+                    e.target.classList.add('active'); 
+                    updateAudioRouting(); 
+                    createGrid(); 
+                    
+                    // --- FIX FOR BROKEN SCOPES ---
+                    // Clear and repopulate the canvas contexts array
+                    canvasContexts.length = 0; 
+                    SOUND_NAMES.forEach((_, index) => { 
+                        const canvas = document.getElementById(`scope-${index}`); 
+                        if (canvas) canvasContexts[index] = canvas.getContext('2d');
+                    });
+                } 
+            });
+            saturationSlider.addEventListener('input', e => {
+                const amount = parseInt(e.target.value);
+                masterSaturation.order = 1 + Math.floor(amount / 2);
+                saturationValue.textContent = `${amount}%`;
+            });
+            driveSlider.addEventListener('input', (e) => { const val = parseFloat(e.target.value); masterDrive.distortion = val; driveValue.textContent = val.toFixed(2); });
+            distortionSlider.addEventListener('input', (e) => { const val = parseFloat(e.target.value); masterDistortion.distortion = val; distortionValue.textContent = val.toFixed(2); });
+            crushSlider.addEventListener('input', (e) => { const val = parseInt(e.target.value); masterCrusher.bits.value = val; crushValue.textContent = `${val} bits`; });
+            filterSlider.addEventListener('input', (e) => { const val = parseInt(e.target.value); if (val === 0) { masterLPF.frequency.value = 20000; masterHPF.frequency.value = 20; filterValue.textContent = 'OFF'; } else if (val < 0) { masterHPF.frequency.value = 20; const freq = Math.pow(10, 2 + ( (100 + val) / 100) * 2.3); masterLPF.frequency.value = freq; filterValue.textContent = `LPF ${Math.round(freq)} Hz`; } else { masterLPF.frequency.value = 20000; const freq = Math.pow(10, 1.3 + (val / 100) * 3); masterHPF.frequency.value = freq; filterValue.textContent = `HPF ${Math.round(freq)} Hz`; } });
+            keySelect.addEventListener('change', (e) => { currentKey = e.target.value; });
+            scaleSelect.addEventListener('change', (e) => { currentScale = e.target.value; });
+            progressionSelect.addEventListener('change', (e) => { currentProgression = e.target.value; });
+            oscSelect.addEventListener('change', (e) => { const oscType = e.target.value; soundBanks.forEach(bank => { if(bank['Chord']) bank['Chord'].set({ oscillator: { type: oscType } }); }); });
+            bassTypeSelect.addEventListener('change', (e) => { currentBassSynth = bassSynths[e.target.value]; updateAudioRouting(); createGrid(); });
+            chordProbabilitySlider.addEventListener('input', (e) => { chordProbability = parseFloat(e.target.value); chordProbabilityValue.textContent = `${Math.round(chordProbability * 100)}%`; });
+            chordOctaveSlider.addEventListener('input', (e) => { currentOctave = parseInt(e.target.value); chordOctaveValue.textContent = currentOctave; });
+            bassOctaveSlider.addEventListener('input', (e) => { bassOctave = parseInt(e.target.value); bassOctaveValue.textContent = bassOctave; });
+            
+            tuneKicksBtn.addEventListener('click', (e) => { 
+                tuneKicksActive = !tuneKicksActive;
+                e.target.classList.toggle('active', tuneKicksActive);
+            });
+            tuneDrumsBtn.addEventListener('click', (e) => { 
+                tuneDrumsActive = !tuneDrumsActive;
+                e.target.classList.toggle('active', tuneDrumsActive);
+            });
+            bassFollowBtn.addEventListener('click', (e) => {
+                bassFollowsChord = !bassFollowsChord;
+                e.target.classList.toggle('active', bassFollowsChord);
+            });
+            compStyleSelect.addEventListener('change', (e) => {
+                compAmountSlider.dispatchEvent(new Event('input'));
+            });
+            compAmountSlider.addEventListener('input', e => {
+                const amount = parseInt(e.target.value) / 100; // 0 to 1
+                compAmountValue.textContent = `${parseInt(e.target.value)}%`;
+                const style = compStyleSelect.value;
+                if (style === 'Vinyl') {
+                    masterCompressor.set({ threshold: -18 - (amount * 18), ratio: 4 + (amount * 16), attack: 0.003, release: 0.1 + (amount * 0.4) });
+                    tapeSaturation.distortion = 0;
+                } else if (style === 'Drive') {
+                    masterCompressor.set({ threshold: -12 - (amount * 24), ratio: 6 + (amount * 14), attack: 0.001, release: 0.2 + (amount * 0.3) });
+                    tapeSaturation.distortion = amount * 0.4;
+                } else if (style === 'Tape') {
+                    masterCompressor.set({ threshold: -15 - (amount * 15), ratio: 3 + (amount * 9), attack: 0.01, release: 0.2 + (amount * 0.4) });
+                    tapeSaturation.distortion = amount * 0.2;
+                }
+            });
+            clearSequenceBtn.addEventListener('click', () => {
+                sequenceState = Array(NUM_SOUNDS).fill(null).map(() => Array(NUM_STEPS).fill(0));
+                document.querySelectorAll('.sequencer-pad').forEach(pad => pad.classList.remove('active'));
+            });
+            fillButton.addEventListener('mousedown', () => { isFillActive = true; });
+            fillButton.addEventListener('mouseup', () => { isFillActive = false; });
+            fillButton.addEventListener('mouseleave', () => { isFillActive = false; });
+            velocityModeBtn.addEventListener('click', () => {
+                isVelocityModeActive = !isVelocityModeActive;
+                velocityModeBtn.classList.toggle('active', isVelocityModeActive);
+            });
+        }
+        
+        function populateSelectors() {
+            NOTES.forEach(note => { const option = document.createElement('option'); option.value = note; option.textContent = note; keySelect.appendChild(option); });
+            OSC_TYPES.forEach(osc => { const option = document.createElement('option'); option.value = osc; option.textContent = osc; oscSelect.appendChild(option); });
+            BASS_TYPES.forEach(type => { const option = document.createElement('option'); option.value = type; option.textContent = type; bassTypeSelect.appendChild(option); });
+            COMP_STYLES.forEach(type => { const option = document.createElement('option'); option.value = type; option.textContent = type; compStyleSelect.appendChild(option); });
+            Object.keys(SCALES).forEach(scaleName => { const option = document.createElement('option'); option.value = scaleName; option.textContent = scaleName.charAt(0).toUpperCase() + scaleName.slice(1); scaleSelect.appendChild(option); });
+            Object.keys(PROGRESSIONS).forEach(progName => { const option = document.createElement('option'); option.value = progName; option.textContent = progName; progressionSelect.appendChild(option); });
+            keySelect.value = currentKey;
+            scaleSelect.value = currentScale;
+            progressionSelect.value = currentProgression;
+        }
+
+        // --- Visualization ---
+        const particles = [];
+        let particleScopeCtx;
+        let colorHue = 0;
+
+        function visualizationLoop() {
+            requestAnimationFrame(visualizationLoop);
+            
+            // --- Get Audio Data ---
+            const fftData = masterFFT.getValue();
+            const levelDb = masterMeter.getValue();
+            const levelLinear = Tone.dbToGain(levelDb);
+            const low = fftData.slice(0, 4).reduce((a, b) => a + b, 0) / 4;
+            const mid = fftData.slice(4, 12).reduce((a, b) => a + b, 0) / 8;
+            const high = fftData.slice(12, 32).reduce((a, b) => a + b, 0) / 20;
+            const lowEnergy = Tone.dbToGain(low + 20);
+            const midEnergy = Tone.dbToGain(mid + 30);
+            const highEnergy = Tone.dbToGain(high + 40);
+
+            // --- Channel Scopes ---
+            soundChannels.forEach((channel, index) => {
+                const ctx = canvasContexts[index]; if (!ctx) return;
+                const waveform = channel.waveform.getValue(); const width = ctx.canvas.width; const height = ctx.canvas.height;
+                ctx.clearRect(0, 0, width, height); ctx.beginPath(); ctx.strokeStyle = '#00ffff'; ctx.lineWidth = 1.5;
+                for (let i = 0; i < waveform.length; i++) { const x = (i / (waveform.length - 1)) * width; const y = (waveform[i] / 2 + 0.5) * height; if (i === 0) { ctx.moveTo(x, y); } else { ctx.lineTo(x, y); } }
+                ctx.stroke();
+            });
+
+            // --- Master Scope ---
+            const masterCtx = masterScopeCanvas.getContext('2d');
+            const masterWave = masterWaveform.getValue();
+            const mWidth = masterScopeCanvas.width;
+            const mHeight = masterScopeCanvas.height;
+            masterCtx.clearRect(0, 0, mWidth, mHeight);
+            masterCtx.beginPath();
+            masterCtx.strokeStyle = '#00ffff';
+            masterCtx.lineWidth = 2;
+            for (let i = 0; i < masterWave.length; i++) {
+                const x = (i / (masterWave.length - 1)) * mWidth;
+                const y = (masterWave[i] / 2 + 0.5) * mHeight;
+                if (i === 0) { masterCtx.moveTo(x, y); } else { masterCtx.lineTo(x, y); }
+            }
+            masterCtx.stroke();
+
+            // --- GR Meter ---
+            const grCtx = grMeterCanvas.getContext('2d');
+            const grWidth = grMeterCanvas.width;
+            const grHeight = grMeterCanvas.height;
+            const reduction = Tone.dbToGain(masterCompressor.reduction); // 0 to 1
+            grCtx.clearRect(0, 0, grWidth, grHeight);
+            grCtx.fillStyle = '#ff4d4d';
+            grCtx.fillRect(0, grHeight * (1 - reduction) , grWidth, grHeight * reduction);
+
+            // --- Energy Orb ---
+            const orbCtx = energyOrbCanvas.getContext('2d');
+            const orbWidth = energyOrbCanvas.width;
+            const orbHeight = energyOrbCanvas.height;
+            orbCtx.clearRect(0, 0, orbWidth, orbHeight);
+            const centerX = orbWidth / 2;
+            const centerY = orbHeight / 2;
+
+            // 1. Pulsing Core
+            const coreRadius = 5 + levelLinear * 20;
+            orbCtx.beginPath();
+            orbCtx.arc(centerX, centerY, coreRadius, 0, 2 * Math.PI);
+            orbCtx.fillStyle = `rgba(255, 255, 255, ${0.5 + levelLinear * 0.5})`;
+            orbCtx.fill();
+
+            // 2. Frequency-Colored Glow
+            const glowRadius = orbWidth * 0.1 + (levelLinear * (orbWidth * 0.45));
+            const r = 100 + Math.round(155 * lowEnergy);
+            const g = 100 + Math.round(155 * midEnergy);
+            const b = 150 + Math.round(105 * highEnergy);
+            const grad = orbCtx.createRadialGradient(centerX, centerY, glowRadius * 0.1, centerX, centerY, glowRadius);
+            grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${0.1 + levelLinear * 0.6})`);
+            grad.addColorStop(1, 'rgba(0, 255, 255, 0)');
+            orbCtx.fillStyle = grad;
+            orbCtx.fillRect(0, 0, orbWidth, orbHeight);
+
+            // 3. Vibrating Outer Ring (using FFT data)
+            const baseRingRadius = orbWidth * 0.35;
+            orbCtx.beginPath();
+            orbCtx.strokeStyle = `rgba(0, 255, 255, ${0.3 + highEnergy * 0.7})`;
+            orbCtx.lineWidth = 1.5;
+            for (let i = 0; i <= 32; i++) {
+                const angle = (i / 32) * Math.PI * 2;
+                const fftValue = Tone.dbToGain(fftData[i % 32]); // Normalize FFT data
+                const radius = baseRingRadius + fftValue * 25;
+                const x = centerX + Math.cos(angle) * radius;
+                const y = centerY + Math.sin(angle) * radius;
+                if (i === 0) {
+                    orbCtx.moveTo(x, y);
+                } else {
+                    orbCtx.lineTo(x, y);
+                }
+            }
+            orbCtx.closePath();
+            orbCtx.stroke();
+
+
+            // --- Particle Scope ---
+            if(particleScopeCtx) {
+                const pWidth = particleScopeCanvas.width;
+                const pHeight = particleScopeCanvas.height;
+                // Fading effect by drawing a semi-transparent rectangle over the whole canvas
+                particleScopeCtx.fillStyle = 'rgba(12, 10, 26, 0.2)';
+                particleScopeCtx.fillRect(0, 0, pWidth, pHeight);
+
+                // Create particles based on frequency energy
+                if (lowEnergy > 0.15) {
+                    for (let i = 0; i < 2; i++) {
+                        particles.push({ x: Math.random() * pWidth, y: pHeight, vx: (Math.random() - 0.5) * 0.5, vy: -Math.random() * 1.5 * lowEnergy, size: 2 + lowEnergy * 6, lifespan: 150, color: `hsl(0, 100%, ${60 + lowEnergy * 40}%)` });
+                    }
+                }
+                if (midEnergy > 0.1) {
+                    for (let i = 0; i < 2; i++) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const speed = 1 + midEnergy * 3;
+                        particles.push({ x: pWidth / 2, y: pHeight / 2, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, size: 1.5 + midEnergy * 5, lifespan: 120, color: `hsl(280, 100%, ${60 + midEnergy * 40}%)` });
+                    }
+                }
+                if (highEnergy > 0.2) {
+                     for (let i = 0; i < 2; i++) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const speed = 1 + highEnergy * 4;
+                         particles.push({ x: pWidth / 2, y: pHeight / 2, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, size: 1 + highEnergy * 3, lifespan: 90, color: `hsl(180, 100%, ${70 + highEnergy * 30}%)` });
+                    }
+                }
+
+
+                // Update and draw particles
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    const p = particles[i];
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vx *= 0.96; // friction
+                    p.vy *= 0.96;
+                    p.lifespan--;
+
+                    if (p.lifespan <= 0 || p.x < 0 || p.x > pWidth || p.y < 0 || p.y > pHeight) {
+                        particles.splice(i, 1);
+                    } else {
+                        particleScopeCtx.beginPath();
+                        particleScopeCtx.globalAlpha = p.lifespan / 120;
+                        particleScopeCtx.fillStyle = p.color;
+                        particleScopeCtx.arc(p.x, p.y, Math.max(0, p.size * (p.lifespan / 120)), 0, Math.PI * 2);
+                        particleScopeCtx.fill();
+                        particleScopeCtx.globalAlpha = 1.0;
+                    }
+                }
+            }
+        }
+
+        window.onload = () => {
+            loadingIndicator.style.display = 'none';
+            appContainer.classList.add('hidden');
+            startAudioOverlay.classList.remove('hidden');
+
+            startAudioBtn.addEventListener('click', async () => {
+                startAudioOverlay.style.display = 'none';
+                loadingIndicator.style.display = 'block';
+
+                // Use a short timeout to ensure the loading indicator renders before heavy work
+                setTimeout(async () => {
+                    try {
+                        await Tone.start();
+                        console.log("Audio Context Started by user.");
+                        
+                        initializeApp();
+
+                        loadingIndicator.style.display = 'none';
+                        appContainer.classList.remove('hidden');
+                        visualizationLoop();
+                    } catch (error) {
+                        loadingIndicator.innerHTML = `<div class="text-center p-4"><h1 class="text-2xl font-bold text-red-500">Initialization Error</h1><p class="text-sm text-gray-400 mt-2">Something went wrong while loading the audio engine. Please try refreshing the page.</p><p class="mt-4 text-xs text-gray-500 font-mono text-left">${error.stack.replace(/\n/g, "<br>")}</p></div>`;
+                        console.error("Error during app initialization:", error);
+                    }
+                }, 50);
+            });
+        };
+    </script>
+</body>
+</html>
+
